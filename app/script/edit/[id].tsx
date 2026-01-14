@@ -1,0 +1,110 @@
+import { useState, useEffect } from 'react'
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native'
+import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useSession } from '@/lib/queries/auth'
+import { useScript, useUpdateScript } from '@/lib/queries/scripts'
+import { scriptSchema, ScriptInput } from '@/utils/validation'
+
+export default function EditScriptScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>()
+  const router = useRouter()
+  const { data: session } = useSession()
+  const { data: script, isLoading } = useScript(id, session?.user?.id)
+  const updateScript = useUpdateScript()
+  const [title, setTitle] = useState('')
+  const [body, setBody] = useState('')
+  const [category, setCategory] = useState('')
+  const [errors, setErrors] = useState<Partial<ScriptInput>>({})
+
+  useEffect(() => {
+    if (script) {
+      setTitle(script.title)
+      setBody(script.body)
+      setCategory(script.category || '')
+    }
+  }, [script])
+
+  const handleUpdate = async () => {
+    try {
+      setErrors({})
+      const validated = scriptSchema.parse({ title, body, category: category || undefined })
+      
+      await updateScript.mutateAsync({
+        id: id!,
+        updates: validated,
+      })
+      
+      router.back()
+    } catch (error: any) {
+      if (error.errors) {
+        const fieldErrors: Partial<ScriptInput> = {}
+        error.errors.forEach((err: any) => {
+          if (err.path) fieldErrors[err.path[0] as keyof ScriptInput] = err.message
+        })
+        setErrors(fieldErrors)
+      } else {
+        Alert.alert('Error', error.message || 'Failed to update script')
+      }
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <View className="flex-1 justify-center items-center bg-white">
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    )
+  }
+
+  return (
+    <ScrollView className="flex-1 bg-white">
+      <View className="p-4">
+        <View className="mb-4">
+          <Text className="text-gray-700 mb-2 font-semibold">Title</Text>
+          <TextInput
+            className="border border-gray-300 rounded-lg px-4 py-3 bg-white"
+            placeholder="Enter script title"
+            value={title}
+            onChangeText={setTitle}
+          />
+          {errors.title && <Text className="text-red-500 text-sm mt-1">{errors.title}</Text>}
+        </View>
+
+        <View className="mb-4">
+          <Text className="text-gray-700 mb-2 font-semibold">Body</Text>
+          <TextInput
+            className="border border-gray-300 rounded-lg px-4 py-3 bg-white h-40"
+            placeholder="Enter script body"
+            value={body}
+            onChangeText={setBody}
+            multiline
+            textAlignVertical="top"
+          />
+          {errors.body && <Text className="text-red-500 text-sm mt-1">{errors.body}</Text>}
+        </View>
+
+        <View className="mb-6">
+          <Text className="text-gray-700 mb-2 font-semibold">Category (optional)</Text>
+          <TextInput
+            className="border border-gray-300 rounded-lg px-4 py-3 bg-white"
+            placeholder="e.g., Welcome, Follow-up"
+            value={category}
+            onChangeText={setCategory}
+          />
+        </View>
+
+        <TouchableOpacity
+          className="bg-blue-600 rounded-lg py-4"
+          onPress={handleUpdate}
+          disabled={updateScript.isPending}
+        >
+          {updateScript.isPending ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text className="text-white text-center font-semibold text-lg">Update Script</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  )
+}

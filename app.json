@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "CWG APP",
+    "slug": "cwg-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cwg.app",
+      "infoPlist": {
+        "NSContactsUsageDescription": "This app needs access to your contacts to send scripts via SMS.",
+        "NSSpeechRecognitionUsageDescription": "This app uses speech recognition."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.cwg.app",
+      "permissions": [
+        "android.permission.READ_CONTACTS",
+        "android.permission.SEND_SMS"
+      ]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "scheme": "cwg-app"
+  }
+}

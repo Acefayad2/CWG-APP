@@ -1,0 +1,32 @@
+-- Seed script for sample data
+-- Note: Replace 'YOUR_ADMIN_USER_ID' with an actual admin user UUID after creating an admin user
+
+-- Sample admin scripts (these will be created by admin user, but here's template)
+-- You can run these after setting up an admin user
+
+-- Example: Insert sample admin scripts (replace created_by with admin UUID)
+-- INSERT INTO public.scripts (title, body, category, is_admin, created_by) VALUES
+-- (
+--   'Welcome Script',
+--   'Welcome to our community! We''re excited to have you here.',
+--   'Welcome',
+--   TRUE,
+--   'YOUR_ADMIN_USER_ID'::UUID
+-- ),
+-- (
+--   'Follow-up Script',
+--   'Hi! Just following up on our previous conversation. Looking forward to hearing from you.',
+--   'Follow-up',
+--   TRUE,
+--   'YOUR_ADMIN_USER_ID'::UUID
+-- ),
+-- (
+--   'Event Invitation',
+--   'You''re invited to our upcoming event! We''d love to see you there.',
+--   'Events',
+--   TRUE,
+--   'YOUR_ADMIN_USER_ID'::UUID
+-- );
+
+-- Note: To set a user as admin, run:
+-- UPDATE public.profiles SET role = 'admin' WHERE id = 'USER_UUID_HERE';
