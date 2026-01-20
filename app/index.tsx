@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter, useFocusEffect } from 'expo-router'
 import { useSession } from '@/lib/queries/auth'
 import { supabase } from '@/lib/supabase'
-import { useCallback } from 'react'
 
 export default function IndexScreen() {
   const router = useRouter()
