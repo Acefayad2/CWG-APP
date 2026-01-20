@@ -23,12 +23,26 @@ export default function LoginScreen() {
     const checkSession = async () => {
       const { data: { session: currentSession } } = await supabase.auth.getSession()
       if (currentSession?.user?.id) {
-        // User is already logged in, redirect to app
-        router.replace('/(tabs)/scripts')
+        // Check approval status before redirecting
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('approval_status')
+          .eq('id', currentSession.user.id)
+          .single()
+        
+        if (profile?.approval_status === 'pending') {
+          router.replace('/awaiting-approval')
+        } else if (profile?.approval_status === 'approved') {
+          router.replace('/(tabs)/scripts')
+        } else {
+          // Rejected or unknown - stay on login
+          await supabase.auth.signOut()
+          queryClient.clear()
+        }
       }
     }
     checkSession()
-  }, [router])
+  }, [router, queryClient])
 
   // Prevent back button on login page (after logout)
   useFocusEffect(
@@ -59,44 +73,108 @@ export default function LoginScreen() {
     try {
       setErrors({})
       const validated = signInSchema.parse({ email, password })
+      
+      // Sign in
       const authData = await signIn.mutateAsync(validated)
       
-      // Ensure session is set in cache
-      if (authData.session) {
-        queryClient.setQueryData(['session'], authData.session)
+      if (!authData.session || !authData.user?.id) {
+        throw new Error('Login failed: No session created')
       }
       
-      // Wait for profile to be refetched
-      if (authData.user?.id) {
-        // Refetch profile to ensure we have latest data including role
+      // Ensure session is set in cache immediately
+      queryClient.setQueryData(['session'], authData.session)
+      
+      // Wait a moment for session to be fully established
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
+      // Verify session is still valid
+      const { data: { session: verifySession } } = await supabase.auth.getSession()
+      if (!verifySession) {
+        throw new Error('Session verification failed. Please try again.')
+      }
+      
+      // Get profile data to check approval status
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('approval_status, role')
+        .eq('id', authData.user.id)
+        .single()
+      
+      if (profileError) {
+        console.error('Profile fetch error:', profileError)
+        // If profile doesn't exist, user needs to sign up
+        Alert.alert(
+          'Account Not Found',
+          'No account found with this email. Please sign up first.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Clear session and redirect to signup
+                supabase.auth.signOut()
+                queryClient.clear()
+                router.replace('/(auth)/signup')
+              }
+            }
+          ]
+        )
+        return
+      }
+      
+      if (!profile) {
+        // Profile doesn't exist - redirect to signup
+        Alert.alert(
+          'Account Not Found',
+          'Your account profile was not found. Please sign up again.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                supabase.auth.signOut()
+                queryClient.clear()
+                router.replace('/(auth)/signup')
+              }
+            }
+          ]
+        )
+        return
+      }
+      
+      // Check approval status and redirect accordingly
+      const approvalStatus = profile.approval_status
+      
+      if (approvalStatus === 'pending') {
+        // User is pending approval - redirect to awaiting approval screen
+        router.replace('/awaiting-approval')
+      } else if (approvalStatus === 'approved') {
+        // User is approved - navigate to app
+        // Invalidate and refetch profile to ensure fresh data
+        await queryClient.invalidateQueries({ queryKey: ['profile', authData.user.id] })
         await queryClient.refetchQueries({ queryKey: ['profile', authData.user.id] })
-        
-        // Get profile data
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('approval_status, role')
-          .eq('id', authData.user.id)
-          .single()
-        
-        if (profileError) {
-          console.error('Profile fetch error:', profileError)
-          // If profile doesn't exist, still allow login (edge case)
-          router.replace('/(tabs)/scripts')
-          return
-        }
-        
-        if (profile) {
-          const approvalStatus = (profile as any).approval_status
-          if (approvalStatus === 'pending') {
-            router.replace('/awaiting-approval')
-            return
-          }
-        }
+        router.replace('/(tabs)/scripts')
+      } else if (approvalStatus === 'rejected') {
+        // User was rejected - show message and sign out
+        Alert.alert(
+          'Account Rejected',
+          'Your account has been rejected. Please contact an administrator if you believe this is an error.',
+          [
+            {
+              text: 'OK',
+              onPress: async () => {
+                await supabase.auth.signOut()
+                queryClient.clear()
+                router.replace('/(auth)/login')
+              }
+            }
+          ]
+        )
+      } else {
+        // Unknown status - default to approved
+        router.replace('/(tabs)/scripts')
       }
-      
-      // User is approved - navigate to app
-      router.replace('/(tabs)/scripts')
     } catch (error: any) {
+      console.error('Login error:', error)
+      
       if (error.errors) {
         const fieldErrors: Partial<SignInInput> = {}
         error.errors.forEach((err: any) => {
@@ -104,7 +182,18 @@ export default function LoginScreen() {
         })
         setErrors(fieldErrors)
       } else {
-        Alert.alert('Error', error.message || 'Failed to sign in')
+        // Show user-friendly error messages
+        let errorMessage = 'Failed to sign in'
+        
+        if (error.message?.includes('Invalid login credentials')) {
+          errorMessage = 'Invalid email or password. Please try again.'
+        } else if (error.message?.includes('Email not confirmed')) {
+          errorMessage = 'Please check your email and confirm your account before signing in.'
+        } else if (error.message) {
+          errorMessage = error.message
+        }
+        
+        Alert.alert('Sign In Error', errorMessage)
       }
     }
   }

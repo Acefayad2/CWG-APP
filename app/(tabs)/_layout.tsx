@@ -69,6 +69,7 @@ export default function TabsLayout() {
             <Ionicons name="checkmark-circle" size={size} color={color} />
           ),
           href: isAdmin ? '/approvals' : null, // Hide tab if not admin
+          tabBarItemStyle: isAdmin ? undefined : { display: 'none' }, // Completely hide from tab bar
         }}
       />
       <Tabs.Screen

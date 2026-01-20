@@ -22,47 +22,93 @@ export default function SignUpScreen() {
       const validated = signUpSchema.parse({ email, password, fullName })
       const authData = await signUp.mutateAsync(validated)
       
-      // Wait a moment for the database trigger to create the profile
-      await new Promise(resolve => setTimeout(resolve, 500))
+      if (!authData.user?.id) {
+        throw new Error('User creation failed - no user ID returned')
+      }
       
-      // Check approval status after signup and verify profile was created
-      if (authData.user?.id) {
-        // Wait a bit longer for trigger to complete
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        
-        // Fetch full profile to verify name was saved
-        const { data: profile, error: profileError } = await supabase
+      // Wait for the database trigger to create the profile
+      await new Promise(resolve => setTimeout(resolve, 800))
+      
+      // Verify session exists
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      if (!currentSession) {
+        console.warn('No session after signup, but user was created')
+        // Session might not be set if email confirmation is required
+        // In that case, show a message
+        Alert.alert(
+          'Account Created',
+          'Your account has been created! Please check your email to confirm your account, then you can sign in.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/(auth)/login')
+            }
+          ]
+        )
+        return
+      }
+      
+      // Retry fetching profile a few times in case trigger is slow
+      let profile = null
+      let profileError = null
+      let retries = 3
+      
+      while (retries > 0 && !profile) {
+        const result = await supabase
           .from('profiles')
           .select('approval_status, full_name')
           .eq('id', authData.user.id)
           .single()
         
-        if (profileError) {
-          console.error('Profile fetch error:', profileError)
-          // If profile doesn't exist, still redirect to awaiting approval as fallback
-          router.replace('/awaiting-approval')
-          return
-        }
+        profile = result.data
+        profileError = result.error
         
         if (profile) {
-          // Log for debugging - ensure name was saved
-          console.log('Profile created:', { full_name: profile.full_name, approval_status: profile.approval_status })
-          
-          const approvalStatus = (profile as any).approval_status
-          if (approvalStatus === 'pending') {
-            router.replace('/awaiting-approval')
-            return
-          }
-        } else {
-          // Profile doesn't exist, redirect to awaiting approval
-          router.replace('/awaiting-approval')
-          return
+          break
         }
+        
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 500))
+        retries--
       }
       
-      // Only reach here if approved
-      router.replace('/(tabs)/scripts')
+      if (profileError || !profile) {
+        console.error('Profile fetch error after retries:', profileError)
+        // Profile might not exist yet - redirect to awaiting approval as fallback
+        // User can log back in later and it should work
+        Alert.alert(
+          'Account Created',
+          'Your account is being set up. Please sign in to continue.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/(auth)/login')
+            }
+          ]
+        )
+        return
+      }
+      
+      // Log for debugging
+      console.log('Profile created:', { 
+        full_name: profile.full_name, 
+        approval_status: profile.approval_status 
+      })
+      
+      // Redirect based on approval status
+      const approvalStatus = profile.approval_status
+      
+      if (approvalStatus === 'pending') {
+        router.replace('/awaiting-approval')
+      } else if (approvalStatus === 'approved') {
+        router.replace('/(tabs)/scripts')
+      } else {
+        // Rejected or unknown - redirect to login
+        router.replace('/(auth)/login')
+      }
     } catch (error: any) {
+      console.error('Signup error:', error)
+      
       if (error.errors) {
         const fieldErrors: Partial<SignUpInput> = {}
         error.errors.forEach((err: any) => {
@@ -70,7 +116,15 @@ export default function SignUpScreen() {
         })
         setErrors(fieldErrors)
       } else {
-        Alert.alert('Error', error.message || 'Failed to sign up')
+        let errorMessage = 'Failed to sign up'
+        
+        if (error.message?.includes('User already registered')) {
+          errorMessage = 'An account with this email already exists. Please sign in instead.'
+        } else if (error.message) {
+          errorMessage = error.message
+        }
+        
+        Alert.alert('Sign Up Error', errorMessage)
       }
     }
   }
