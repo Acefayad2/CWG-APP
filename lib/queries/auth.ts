@@ -45,8 +45,30 @@ export function useSignUp() {
       if (authError) throw authError
       if (!authData.user) throw new Error('User creation failed')
 
-      // Profile is automatically created by trigger, so we don't need to insert manually
-      // The trigger uses raw_user_meta_data->>'full_name' to set the full_name field
+      // Profile is automatically created by trigger, but we need to ensure the name is set
+      // Wait a moment for the trigger to run
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // Verify and update profile if name wasn't set by trigger
+      if (authData.user.id) {
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', authData.user.id)
+          .single()
+        
+        // If profile exists but name is missing/null, update it
+        if (!profileError && profile && (!profile.full_name || profile.full_name.trim() === '')) {
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ full_name: fullName })
+            .eq('id', authData.user.id)
+          
+          if (updateError) {
+            console.error('Failed to update profile name:', updateError)
+          }
+        }
+      }
 
       return authData
     },

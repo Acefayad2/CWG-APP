@@ -226,9 +226,21 @@ CREATE POLICY "Users can delete their own resource favorites"
 -- Function to automatically create profile on signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  user_full_name TEXT;
 BEGIN
+  -- Try to get full_name from raw_user_meta_data first
+  user_full_name := NEW.raw_user_meta_data->>'full_name';
+  
+  -- If not found, try to get from email as fallback (first part before @)
+  IF user_full_name IS NULL OR user_full_name = '' THEN
+    user_full_name := split_part(NEW.email, '@', 1);
+  END IF;
+  
+  -- Insert profile with the extracted name
   INSERT INTO public.profiles (id, full_name, role, approval_status)
-  VALUES (NEW.id, NEW.raw_user_meta_data->>'full_name', 'user', 'pending');
+  VALUES (NEW.id, user_full_name, 'user', 'pending');
+  
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
