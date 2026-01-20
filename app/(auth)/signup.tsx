@@ -22,15 +22,22 @@ export default function SignUpScreen() {
       const validated = signUpSchema.parse({ email, password, fullName })
       const authData = await signUp.mutateAsync(validated)
       
-      // Check approval status after signup
+      // Wait a moment for the database trigger to create the profile
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // Check approval status after signup and verify profile was created
       if (authData.user?.id) {
+        // Fetch full profile to verify name was saved
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('approval_status')
+          .select('approval_status, full_name')
           .eq('id', authData.user.id)
           .single()
         
         if (!profileError && profile) {
+          // Log for debugging - ensure name was saved
+          console.log('Profile created:', { full_name: profile.full_name, approval_status: profile.approval_status })
+          
           const approvalStatus = (profile as any).approval_status
           if (approvalStatus === 'pending') {
             router.replace('/awaiting-approval')
