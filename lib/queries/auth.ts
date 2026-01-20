@@ -104,56 +104,10 @@ export function useSignOut() {
 export function useUpdateProfile() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ userId, updates, imageFile, currentPictureUrl }: { userId: string; updates: { full_name?: string }; imageFile?: { uri: string; type: string; name: string }; currentPictureUrl?: string }) => {
-      let profilePictureUrl = currentPictureUrl
-
-      // Upload profile picture if provided
-      if (imageFile) {
-        const fileExt = imageFile.name.split('.').pop() || 'jpg'
-        const fileName = `${userId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
-        
-        // Read file using fetch (React Native compatible)
-        const response = await fetch(imageFile.uri)
-        const blob = await response.blob()
-
-        // Delete old profile picture if exists
-        if (currentPictureUrl) {
-          try {
-            const oldPath = currentPictureUrl.split('/avatars/')[1]?.split('?')[0]
-            if (oldPath) {
-              await supabase.storage.from('avatars').remove([oldPath])
-            }
-          } catch (e) {
-            // Ignore errors when deleting old picture
-          }
-        }
-
-        const { error: uploadError } = await supabase.storage
-          .from('avatars')
-          .upload(fileName, blob, {
-            contentType: imageFile.type,
-            upsert: true,
-          })
-
-        if (uploadError) throw uploadError
-
-        // Get public URL
-        const { data: urlData } = supabase.storage
-          .from('avatars')
-          .getPublicUrl(fileName)
-
-        profilePictureUrl = urlData.publicUrl
-      }
-
-      // Update profile
-      const updateData: { full_name?: string; profile_picture_url?: string } = { ...updates }
-      if (profilePictureUrl !== undefined) {
-        updateData.profile_picture_url = profilePictureUrl
-      }
-
+    mutationFn: async ({ userId, updates }: { userId: string; updates: { full_name?: string } }) => {
       const { data, error } = await supabase
         .from('profiles')
-        .update(updateData)
+        .update(updates)
         .eq('id', userId)
         .select()
         .single()
