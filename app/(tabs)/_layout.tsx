@@ -7,8 +7,8 @@ import { useProfile } from '@/lib/queries/auth'
 
 export default function TabsLayout() {
   const { data: session } = useSession()
-  const { data: profile } = useProfile(session?.user?.id)
-  const isAdmin = profile?.role === 'admin'
+  const { data: profile, isLoading: profileLoading } = useProfile(session?.user?.id)
+  const isAdmin = profile?.role === 'admin' && !profileLoading
 
   return (
     <Tabs
@@ -60,18 +60,17 @@ export default function TabsLayout() {
           ),
         }}
       />
-      {isAdmin && (
-        <Tabs.Screen
-          name="approvals"
-          options={{
-            title: 'Approvals',
-            tabBarLabel: 'Approvals',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="checkmark-circle" size={size} color={color} />
-            ),
-          }}
-        />
-      )}
+      <Tabs.Screen
+        name="approvals"
+        options={{
+          title: 'Approvals',
+          tabBarLabel: 'Approvals',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="checkmark-circle" size={size} color={color} />
+          ),
+          href: isAdmin ? '/approvals' : null, // Hide tab if not admin
+        }}
+      />
       <Tabs.Screen
         name="profile"
         options={{

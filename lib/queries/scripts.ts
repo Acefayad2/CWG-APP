@@ -6,28 +6,56 @@ export function useScripts(userId?: string) {
   return useQuery({
     queryKey: ['scripts', userId],
     queryFn: async () => {
-      // Fetch admin scripts and user's own scripts if authenticated
-      let query = supabase
+      // Fetch admin scripts (is_admin = true) and user's own scripts if authenticated
+      // We need to get both admin scripts and user's scripts separately, then combine
+      
+      let adminScripts: any[] = []
+      let userScripts: any[] = []
+      
+      // Always get admin scripts (visible to all)
+      const { data: adminData, error: adminError } = await supabase
         .from('scripts')
         .select('*, script_favorites!left(user_id)')
+        .eq('is_admin', true)
+        .order('created_at', { ascending: false })
       
-      if (userId) {
-        query = query.or(`is_admin.eq.true,created_by.eq.${userId}`)
+      if (adminError) {
+        console.error('Admin scripts query error:', adminError)
       } else {
-        query = query.eq('is_admin', true)
+        adminScripts = adminData || []
       }
       
-      query = query.order('created_at', { ascending: false })
-
-      const { data, error } = await query
-      if (error) throw error
-
-      return (data as any[]).map((script) => ({
+      // Get user's own scripts if userId provided
+      if (userId) {
+        const { data: userData, error: userError } = await supabase
+          .from('scripts')
+          .select('*, script_favorites!left(user_id)')
+          .eq('created_by', userId)
+          .eq('is_admin', false)
+          .order('created_at', { ascending: false })
+        
+        if (userError) {
+          console.error('User scripts query error:', userError)
+        } else {
+          userScripts = userData || []
+        }
+      }
+      
+      // Combine and deduplicate by id
+      const allScripts = [...adminScripts, ...userScripts]
+      const uniqueScripts = Array.from(
+        new Map(allScripts.map((script: any) => [script.id, script])).values()
+      )
+      
+      const scripts = uniqueScripts.map((script: any) => ({
         ...script,
         is_favorite: script.script_favorites?.some((f: any) => f.user_id === userId),
       })) as ScriptWithFavorite[]
+      
+      console.log('Scripts loaded:', scripts.length, 'admin scripts:', scripts.filter(s => s.is_admin).length, 'user scripts:', scripts.filter(s => !s.is_admin).length)
+      return scripts
     },
-    // Always enabled - queries will handle auth via RLS
+    enabled: true, // Always enabled - queries will handle auth via RLS
   })
 }
 

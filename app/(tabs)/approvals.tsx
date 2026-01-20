@@ -1,15 +1,40 @@
 import { useState } from 'react'
+import { useEffect } from 'react'
 import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, RefreshControl, Alert, StyleSheet, Platform, Modal, Switch } from 'react-native'
-import { useSession } from '@/lib/queries/auth'
+import { useRouter } from 'expo-router'
+import { useSession, useProfile } from '@/lib/queries/auth'
 import { usePendingUsers, useApproveUser, useDenyUser, PendingUser } from '@/lib/queries/auth'
 import { Colors } from '@/constants/Colors'
 import { CommonStyles } from '@/constants/Styles'
 
 export default function ApprovalsScreen() {
+  const router = useRouter()
   const { data: session } = useSession()
+  const { data: profile, isLoading: profileLoading } = useProfile(session?.user?.id)
   const { data: pendingUsers, isLoading, refetch, isRefetching } = usePendingUsers()
   const approveUser = useApproveUser()
   const denyUser = useDenyUser()
+  
+  const isAdmin = profile?.role === 'admin'
+  
+  // Redirect non-admins away
+  useEffect(() => {
+    if (!profileLoading && !isAdmin) {
+      router.replace('/(tabs)/scripts')
+    }
+  }, [isAdmin, profileLoading, router])
+  
+  if (profileLoading || isLoading) {
+    return (
+      <View style={[CommonStyles.centered, { backgroundColor: Colors.background }]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    )
+  }
+  
+  if (!isAdmin) {
+    return null // Will redirect
+  }
   
   const [showApproveModal, setShowApproveModal] = useState(false)
   const [selectedUser, setSelectedUser] = useState<PendingUser | null>(null)
@@ -57,14 +82,6 @@ export default function ApprovalsScreen() {
           },
         },
       ]
-    )
-  }
-
-  if (isLoading) {
-    return (
-      <View style={[CommonStyles.centered, { backgroundColor: Colors.background }]}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
     )
   }
 

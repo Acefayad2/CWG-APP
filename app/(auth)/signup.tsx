@@ -27,6 +27,9 @@ export default function SignUpScreen() {
       
       // Check approval status after signup and verify profile was created
       if (authData.user?.id) {
+        // Wait a bit longer for trigger to complete
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        
         // Fetch full profile to verify name was saved
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
@@ -34,7 +37,14 @@ export default function SignUpScreen() {
           .eq('id', authData.user.id)
           .single()
         
-        if (!profileError && profile) {
+        if (profileError) {
+          console.error('Profile fetch error:', profileError)
+          // If profile doesn't exist, still redirect to awaiting approval as fallback
+          router.replace('/awaiting-approval')
+          return
+        }
+        
+        if (profile) {
           // Log for debugging - ensure name was saved
           console.log('Profile created:', { full_name: profile.full_name, approval_status: profile.approval_status })
           
@@ -43,9 +53,14 @@ export default function SignUpScreen() {
             router.replace('/awaiting-approval')
             return
           }
+        } else {
+          // Profile doesn't exist, redirect to awaiting approval
+          router.replace('/awaiting-approval')
+          return
         }
       }
       
+      // Only reach here if approved
       router.replace('/(tabs)/scripts')
     } catch (error: any) {
       if (error.errors) {
