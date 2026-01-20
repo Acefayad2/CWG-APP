@@ -14,20 +14,38 @@ export default function AwaitingApprovalScreen() {
   const handleSignOut = async () => {
     setIsSigningOut(true)
     try {
-      // Sign out from Supabase directly
-      await supabase.auth.signOut()
-      // Clear all cached queries to ensure fresh state
+      console.log('Starting sign out...')
+      
+      // Clear queries first
       queryClient.clear()
-      // Invalidate session query to ensure UI updates
-      queryClient.invalidateQueries({ queryKey: ['session'] })
+      
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut()
+      
+      if (error) {
+        console.error('Sign out error:', error)
+      } else {
+        console.log('Sign out successful')
+      }
+      
+      // Wait a bit for sign out to complete
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      // Force clear session data
+      queryClient.setQueryData(['session'], null)
+      queryClient.invalidateQueries({ queryKey: ['session'], refetchType: 'active' })
       queryClient.invalidateQueries({ queryKey: ['profile'] })
-      // Navigate immediately after sign out
+      
+      // Wait for session state to update
+      await new Promise(resolve => setTimeout(resolve, 200))
+      
+      // Navigate to login
+      console.log('Navigating to login...')
       router.replace('/(auth)/login')
+      
     } catch (error) {
       console.error('Sign out error:', error)
-      // Clear queries even on error
-      queryClient.clear()
-      // Navigate anyway - session check will handle it
+      // Navigate anyway
       router.replace('/(auth)/login')
     } finally {
       setIsSigningOut(false)

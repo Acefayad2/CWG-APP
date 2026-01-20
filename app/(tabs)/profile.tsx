@@ -21,44 +21,58 @@ export default function ProfileScreen() {
   const [imageFile, setImageFile] = useState<{ uri: string; type: string; name: string } | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
 
-  const handleSignOut = async () => {
-    const result = await new Promise<boolean>((resolve) => {
-      Alert.alert(
-        'Sign Out',
-        'Are you sure you want to sign out?',
-        [
-          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-          {
-            text: 'Sign Out',
-            style: 'destructive',
-            onPress: () => resolve(true),
+  const handleSignOut = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            setIsSigningOut(true)
+            try {
+              console.log('Starting sign out...')
+              
+              // Clear queries first to prevent race conditions
+              queryClient.clear()
+              
+              // Sign out from Supabase
+              const { error } = await supabase.auth.signOut()
+              
+              if (error) {
+                console.error('Sign out error:', error)
+              } else {
+                console.log('Sign out successful')
+              }
+              
+              // Wait a tiny bit to ensure sign out completes
+              await new Promise(resolve => setTimeout(resolve, 100))
+              
+              // Force invalidate and refetch session to ensure it's cleared
+              queryClient.setQueryData(['session'], null)
+              queryClient.invalidateQueries({ queryKey: ['session'], refetchType: 'active' })
+              queryClient.invalidateQueries({ queryKey: ['profile'] })
+              
+              // Wait a bit more for the session state to update
+              await new Promise(resolve => setTimeout(resolve, 200))
+              
+              // Navigate to login - use replace to clear history
+              console.log('Navigating to login...')
+              router.replace('/(auth)/login')
+              
+            } catch (error) {
+              console.error('Sign out error:', error)
+              // Navigate anyway
+              router.push('/(auth)/login')
+            } finally {
+              setIsSigningOut(false)
+            }
           },
-        ]
-      )
-    })
-
-    if (!result) return
-
-    setIsSigningOut(true)
-    try {
-      // Sign out from Supabase directly
-      await supabase.auth.signOut()
-      // Clear all cached queries to ensure fresh state
-      queryClient.clear()
-      // Invalidate session query to ensure UI updates
-      queryClient.invalidateQueries({ queryKey: ['session'] })
-      queryClient.invalidateQueries({ queryKey: ['profile'] })
-      // Navigate immediately after sign out
-      router.replace('/(auth)/login')
-    } catch (error) {
-      console.error('Sign out error:', error)
-      // Clear queries even on error
-      queryClient.clear()
-      // Navigate anyway - session check will handle it
-      router.replace('/(auth)/login')
-    } finally {
-      setIsSigningOut(false)
-    }
+        },
+      ]
+    )
   }
 
   const handleEditProfile = () => {
