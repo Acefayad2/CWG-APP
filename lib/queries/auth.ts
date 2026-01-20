@@ -79,11 +79,22 @@ export function useSignOut() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async () => {
+      // Clear all queries first to prevent stale data
+      queryClient.clear()
+      
+      // Then sign out from Supabase
       const { error } = await supabase.auth.signOut()
-      if (error) throw error
+      if (error) {
+        console.error('Sign out error:', error)
+        throw error
+      }
     },
     onSuccess: () => {
+      // Ensure all queries are cleared after successful sign out
       queryClient.clear()
+    },
+    onError: (error) => {
+      console.error('Sign out mutation error:', error)
     },
   })
 }

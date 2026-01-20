@@ -13,7 +13,9 @@ export default function AwaitingApprovalScreen() {
       await signOut.mutateAsync()
       router.replace('/(auth)/login')
     } catch (error: any) {
-      // Handle error if needed
+      console.error('Sign out error:', error)
+      // Even if sign out fails, try to navigate to login
+      router.replace('/(auth)/login')
     }
   }
 

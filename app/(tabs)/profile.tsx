@@ -18,7 +18,7 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState('')
   const [imageFile, setImageFile] = useState<{ uri: string; type: string; name: string } | null>(null)
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
@@ -30,9 +30,29 @@ export default function ProfileScreen() {
           onPress: async () => {
             try {
               await signOut.mutateAsync()
+              // Force navigation even if mutation succeeds
+              // Clear any cached session data
               router.replace('/(auth)/login')
             } catch (error: any) {
-              Alert.alert('Error', error.message)
+              console.error('Sign out error:', error)
+              Alert.alert(
+                'Sign Out Error', 
+                error?.message || 'Failed to sign out. Please try again.',
+                [
+                  {
+                    text: 'Try Again',
+                    onPress: handleSignOut,
+                  },
+                  {
+                    text: 'Force Sign Out',
+                    style: 'destructive',
+                    onPress: () => {
+                      // Force clear local storage and redirect
+                      router.replace('/(auth)/login')
+                    },
+                  },
+                ]
+              )
             }
           },
         },
@@ -184,11 +204,16 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <View style={styles.menuCard}>
             <TouchableOpacity
-              style={styles.menuItem}
+              style={[styles.menuItem, signOut.isPending && styles.menuItemDisabled]}
               onPress={handleSignOut}
               activeOpacity={0.7}
+              disabled={signOut.isPending}
             >
-              <Text style={styles.signOutText}>Sign Out</Text>
+              {signOut.isPending ? (
+                <ActivityIndicator color={Colors.error} size="small" />
+              ) : (
+                <Text style={styles.signOutText}>Sign Out</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -382,6 +407,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
     minHeight: 60,
+  },
+  menuItemDisabled: {
+    opacity: 0.5,
   },
   menuItemContent: {
     flex: 1,
