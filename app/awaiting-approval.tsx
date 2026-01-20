@@ -8,15 +8,18 @@ export default function AwaitingApprovalScreen() {
   const router = useRouter()
   const signOut = useSignOut()
 
-  const handleSignOut = async () => {
-    try {
-      await signOut.mutateAsync()
-      router.replace('/(auth)/login')
-    } catch (error: any) {
-      console.error('Sign out error:', error)
-      // Even if sign out fails, try to navigate to login
-      router.replace('/(auth)/login')
-    }
+  const handleSignOut = () => {
+    // Sign out and navigate - handle both success and error cases
+    signOut.mutate(undefined, {
+      onSuccess: () => {
+        router.replace('/(auth)/login')
+      },
+      onError: () => {
+        // Even if sign out fails, navigate to login
+        // The session will be cleared on the next check
+        router.replace('/(auth)/login')
+      },
+    })
   }
 
   return (

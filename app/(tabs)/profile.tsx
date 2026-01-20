@@ -18,7 +18,7 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState('')
   const [imageFile, setImageFile] = useState<{ uri: string; type: string; name: string } | null>(null)
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
@@ -27,33 +27,18 @@ export default function ProfileScreen() {
         {
           text: 'Sign Out',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              await signOut.mutateAsync()
-              // Force navigation even if mutation succeeds
-              // Clear any cached session data
-              router.replace('/(auth)/login')
-            } catch (error: any) {
-              console.error('Sign out error:', error)
-              Alert.alert(
-                'Sign Out Error', 
-                error?.message || 'Failed to sign out. Please try again.',
-                [
-                  {
-                    text: 'Try Again',
-                    onPress: handleSignOut,
-                  },
-                  {
-                    text: 'Force Sign Out',
-                    style: 'destructive',
-                    onPress: () => {
-                      // Force clear local storage and redirect
-                      router.replace('/(auth)/login')
-                    },
-                  },
-                ]
-              )
-            }
+          onPress: () => {
+            // Sign out and navigate immediately - don't wait for the result
+            signOut.mutate(undefined, {
+              onSuccess: () => {
+                router.replace('/(auth)/login')
+              },
+              onError: () => {
+                // Even if sign out fails, navigate to login
+                // The session will be cleared on the next check
+                router.replace('/(auth)/login')
+              },
+            })
           },
         },
       ]
