@@ -1,25 +1,28 @@
+import { useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native'
 import { useRouter } from 'expo-router'
-import { useSignOut } from '@/lib/queries/auth'
+import { supabase } from '@/lib/supabase'
 import { Colors } from '@/constants/Colors'
 import { CommonStyles } from '@/constants/Styles'
 
 export default function AwaitingApprovalScreen() {
   const router = useRouter()
-  const signOut = useSignOut()
+  const [isSigningOut, setIsSigningOut] = useState(false)
 
-  const handleSignOut = () => {
-    // Sign out and navigate - handle both success and error cases
-    signOut.mutate(undefined, {
-      onSuccess: () => {
-        router.replace('/(auth)/login')
-      },
-      onError: () => {
-        // Even if sign out fails, navigate to login
-        // The session will be cleared on the next check
-        router.replace('/(auth)/login')
-      },
-    })
+  const handleSignOut = async () => {
+    setIsSigningOut(true)
+    try {
+      // Sign out from Supabase directly and navigate
+      await supabase.auth.signOut()
+      // Navigate immediately after sign out
+      router.replace('/(auth)/login')
+    } catch (error) {
+      console.error('Sign out error:', error)
+      // Navigate anyway - session check will handle it
+      router.replace('/(auth)/login')
+    } finally {
+      setIsSigningOut(false)
+    }
   }
 
   return (
@@ -40,10 +43,10 @@ export default function AwaitingApprovalScreen() {
         <TouchableOpacity
           style={[CommonStyles.button, CommonStyles.buttonOutline, styles.signOutButton]}
           onPress={handleSignOut}
-          disabled={signOut.isPending}
+          disabled={isSigningOut}
           activeOpacity={0.8}
         >
-          {signOut.isPending ? (
+          {isSigningOut ? (
             <ActivityIndicator color={Colors.primary} />
           ) : (
             <Text style={CommonStyles.buttonTextOutline}>Sign Out</Text>

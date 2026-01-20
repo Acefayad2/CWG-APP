@@ -3,7 +3,8 @@ import { View, Text, TouchableOpacity, ActivityIndicator, Alert, StyleSheet, Scr
 import { useRouter } from 'expo-router'
 import * as ImagePicker from 'expo-image-picker'
 import { useSession } from '@/lib/queries/auth'
-import { useProfile, useSignOut, useUpdateProfile } from '@/lib/queries/auth'
+import { useProfile, useUpdateProfile } from '@/lib/queries/auth'
+import { supabase } from '@/lib/supabase'
 import { Colors } from '@/constants/Colors'
 import { CommonStyles } from '@/constants/Styles'
 
@@ -11,38 +12,44 @@ export default function ProfileScreen() {
   const router = useRouter()
   const { data: session, isLoading: sessionLoading } = useSession()
   const { data: profile, isLoading: profileLoading } = useProfile(session?.user?.id)
-  const signOut = useSignOut()
   const updateProfile = useUpdateProfile()
   
   const [showEditModal, setShowEditModal] = useState(false)
   const [editName, setEditName] = useState('')
   const [imageFile, setImageFile] = useState<{ uri: string; type: string; name: string } | null>(null)
+  const [isSigningOut, setIsSigningOut] = useState(false)
 
-  const handleSignOut = () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: () => {
-            // Sign out and navigate immediately - don't wait for the result
-            signOut.mutate(undefined, {
-              onSuccess: () => {
-                router.replace('/(auth)/login')
-              },
-              onError: () => {
-                // Even if sign out fails, navigate to login
-                // The session will be cleared on the next check
-                router.replace('/(auth)/login')
-              },
-            })
+  const handleSignOut = async () => {
+    const result = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        'Sign Out',
+        'Are you sure you want to sign out?',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          {
+            text: 'Sign Out',
+            style: 'destructive',
+            onPress: () => resolve(true),
           },
-        },
-      ]
-    )
+        ]
+      )
+    })
+
+    if (!result) return
+
+    setIsSigningOut(true)
+    try {
+      // Sign out from Supabase directly and navigate
+      await supabase.auth.signOut()
+      // Navigate immediately after sign out
+      router.replace('/(auth)/login')
+    } catch (error) {
+      console.error('Sign out error:', error)
+      // Navigate anyway - session check will handle it
+      router.replace('/(auth)/login')
+    } finally {
+      setIsSigningOut(false)
+    }
   }
 
   const handleEditProfile = () => {
@@ -189,12 +196,12 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <View style={styles.menuCard}>
             <TouchableOpacity
-              style={[styles.menuItem, signOut.isPending && styles.menuItemDisabled]}
+              style={[styles.menuItem, isSigningOut && styles.menuItemDisabled]}
               onPress={handleSignOut}
               activeOpacity={0.7}
-              disabled={signOut.isPending}
+              disabled={isSigningOut}
             >
-              {signOut.isPending ? (
+              {isSigningOut ? (
                 <ActivityIndicator color={Colors.error} size="small" />
               ) : (
                 <Text style={styles.signOutText}>Sign Out</Text>
