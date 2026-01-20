@@ -177,6 +177,11 @@ export interface PendingUser {
   email?: string
   created_at: string
   approval_status: 'pending' | 'approved' | 'rejected'
+  role?: 'user' | 'admin'
+}
+
+export interface AllUser extends PendingUser {
+  role: 'user' | 'admin'
 }
 
 export function usePendingUsers() {
@@ -195,6 +200,22 @@ export function usePendingUsers() {
       // but we can try to get email from session or use a workaround)
       // For now, return profiles without emails - we'll get them from auth if needed
       return (data || []) as PendingUser[]
+    },
+  })
+}
+
+export function useAllUsers() {
+  return useQuery({
+    queryKey: ['all_users'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false })
+      
+      if (error) throw error
+      
+      return (data || []) as AllUser[]
     },
   })
 }
@@ -224,6 +245,7 @@ export function useApproveUser() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending_users'] })
+      queryClient.invalidateQueries({ queryKey: ['all_users'] })
       queryClient.invalidateQueries({ queryKey: ['profile'] })
     },
   })
@@ -251,6 +273,177 @@ export function useDenyUser() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending_users'] })
+      queryClient.invalidateQueries({ queryKey: ['all_users'] })
+      queryClient.invalidateQueries({ queryKey: ['profile'] })
+    },
+  })
+}
+
+export function useUpdateUserStatus() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ 
+      userId, 
+      approval_status, 
+      role 
+    }: { 
+      userId: string
+      approval_status?: 'pending' | 'approved' | 'rejected'
+      role?: 'user' | 'admin'
+    }) => {
+      // If status is being set to rejected, delete all user data
+      if (approval_status === 'rejected') {
+        console.log('Rejecting user - deleting all data for user:', userId)
+        
+        // Delete user contacts
+        const { error: contactsError } = await supabase
+          .from('user_contacts')
+          .delete()
+          .eq('user_id', userId)
+        if (contactsError) console.error('Error deleting contacts:', contactsError)
+        
+        // Delete contact history
+        const { error: historyError } = await supabase
+          .from('contact_history')
+          .delete()
+          .eq('user_id', userId)
+        if (historyError) console.error('Error deleting contact history:', historyError)
+        
+        // Delete script favorites
+        const { error: scriptFavsError } = await supabase
+          .from('script_favorites')
+          .delete()
+          .eq('user_id', userId)
+        if (scriptFavsError) console.error('Error deleting script favorites:', scriptFavsError)
+        
+        // Delete resource favorites
+        const { error: resourceFavsError } = await supabase
+          .from('resources_favorites')
+          .delete()
+          .eq('user_id', userId)
+        if (resourceFavsError) console.error('Error deleting resource favorites:', resourceFavsError)
+        
+        // Delete resources created by user
+        const { error: resourcesError } = await supabase
+          .from('resources')
+          .delete()
+          .eq('created_by', userId)
+        if (resourcesError) console.error('Error deleting resources:', resourcesError)
+        
+        // Delete scripts created by user (non-admin scripts)
+        const { error: scriptsError } = await supabase
+          .from('scripts')
+          .delete()
+          .eq('created_by', userId)
+        if (scriptsError) console.error('Error deleting scripts:', scriptsError)
+        
+        // Finally, delete the profile
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .delete()
+          .eq('id', userId)
+        
+        if (profileError) {
+          console.error('Error deleting profile:', profileError)
+          throw profileError
+        }
+        
+        console.log('User and all data deleted successfully')
+        return { id: userId, approval_status: 'rejected', deleted: true }
+      } else {
+        // Normal update for other statuses
+        const updates: { approval_status?: string; role?: string } = {}
+        
+        if (approval_status !== undefined) {
+          updates.approval_status = approval_status
+        }
+        
+        if (role !== undefined) {
+          updates.role = role
+        }
+        
+        if (Object.keys(updates).length === 0) {
+          throw new Error('No updates provided')
+        }
+        
+        const { data, error } = await supabase
+          .from('profiles')
+          .update(updates)
+          .eq('id', userId)
+          .select()
+          .single()
+        
+        if (error) throw error
+        return data
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pending_users'] })
+      queryClient.invalidateQueries({ queryKey: ['all_users'] })
+      queryClient.invalidateQueries({ queryKey: ['profile'] })
+    },
+  })
+}
+
+export function useRemoveUser() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      // Delete the profile - this will effectively remove the user from the app
+      // The auth.users record will remain, but without a profile they can't access the app
+      // They'll need to sign up again to get a new profile
+      console.log('Attempting to delete profile for user:', userId)
+      
+      // First, verify we're an admin
+      const { data: currentUser } = await supabase.auth.getUser()
+      console.log('Current user:', currentUser?.user?.id)
+      
+      if (currentUser?.user?.id) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', currentUser.user.id)
+          .single()
+        console.log('Current user profile:', profile)
+        if (profile?.role !== 'admin') {
+          throw new Error('Only admins can remove users')
+        }
+      }
+      
+      // Try to delete
+      const { data, error } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', userId)
+        .select()
+      
+      if (error) {
+        console.error('Delete profile error:', error)
+        console.error('Error code:', error.code)
+        console.error('Error message:', error.message)
+        console.error('Error details:', JSON.stringify(error, null, 2))
+        
+        // Provide more helpful error messages
+        if (error.code === '42501') {
+          throw new Error('Permission denied. Make sure the RLS policy "Admins can delete profiles" is set up in Supabase.')
+        } else if (error.code === 'PGRST116') {
+          throw new Error('User profile not found')
+        } else {
+          throw new Error(error.message || `Failed to delete profile: ${error.code || 'Unknown error'}`)
+        }
+      }
+      
+      if (!data || data.length === 0) {
+        console.warn('Delete returned no data - profile may not exist or was already deleted')
+        // Still consider it success if no error was thrown
+      }
+      
+      console.log('Profile deleted successfully:', data)
+      return { success: true, data }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pending_users'] })
+      queryClient.invalidateQueries({ queryKey: ['all_users'] })
       queryClient.invalidateQueries({ queryKey: ['profile'] })
     },
   })

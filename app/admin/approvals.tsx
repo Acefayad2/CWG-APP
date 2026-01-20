@@ -2,22 +2,28 @@ import { useState } from 'react'
 import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, RefreshControl, Alert, StyleSheet, Modal, Switch, Platform } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSession } from '@/lib/queries/auth'
-import { usePendingUsers, useApproveUser, useDenyUser, PendingUser } from '@/lib/queries/auth'
+import { usePendingUsers, useAllUsers, useApproveUser, useDenyUser, useUpdateUserStatus, PendingUser, AllUser } from '@/lib/queries/auth'
 import { Colors } from '@/constants/Colors'
 import { CommonStyles } from '@/constants/Styles'
 
 export default function AdminApprovalsScreen() {
   const router = useRouter()
   const { data: session } = useSession()
-  const { data: pendingUsers, isLoading, refetch, isRefetching } = usePendingUsers()
+  const { data: pendingUsers, isLoading: pendingLoading, refetch: refetchPending, isRefetching: isRefetchingPending } = usePendingUsers()
+  const { data: allUsers, isLoading: allLoading, refetch: refetchAll, isRefetching: isRefetchingAll } = useAllUsers()
   const approveUser = useApproveUser()
   const denyUser = useDenyUser()
+  const updateUserStatus = useUpdateUserStatus()
 
+  const [activeTab, setActiveTab] = useState<'pending' | 'all'>('pending')
   const [showApproveModal, setShowApproveModal] = useState(false)
-  const [selectedUser, setSelectedUser] = useState<PendingUser | null>(null)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<PendingUser | AllUser | null>(null)
   const [makeAdmin, setMakeAdmin] = useState(false)
+  const [editApprovalStatus, setEditApprovalStatus] = useState<'pending' | 'approved' | 'rejected'>('approved')
+  const [editRole, setEditRole] = useState<'user' | 'admin'>('user')
 
-  const handleApprove = (user: PendingUser) => {
+  const handleApprove = (user: PendingUser | AllUser) => {
     setSelectedUser(user)
     setMakeAdmin(false)
     setShowApproveModal(true)
@@ -34,33 +40,98 @@ export default function AdminApprovalsScreen() {
       setShowApproveModal(false)
       setSelectedUser(null)
       setMakeAdmin(false)
-      refetch()
+      refetchPending()
+      refetchAll()
     } catch (error: any) {
       Alert.alert('Error', error.message)
     }
   }
 
-  const handleDeny = (userId: string, userName: string) => {
+  const handleDeny = (userId: string, userName: string, currentStatus?: string) => {
+    console.log('Deny/Reject button clicked for user:', userId, 'Current status:', currentStatus)
+    const isApproved = currentStatus === 'approved'
+    const actionText = isApproved ? 'Reject' : 'Deny'
+    const message = isApproved 
+      ? `Are you sure you want to reject ${userName}? They will lose access to the app.`
+      : `Are you sure you want to deny ${userName}? They will not be able to access the app.`
+    
     Alert.alert(
-      'Deny User',
-      `Are you sure you want to deny ${userName}? They will need to sign up again.`,
+      `${actionText} User`,
+      message,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Deny',
+          text: actionText,
           style: 'destructive',
           onPress: async () => {
             try {
+              console.log(`${actionText}ing user:`, userId)
               await denyUser.mutateAsync(userId)
-              refetch()
+              console.log(`User ${actionText.toLowerCase()}ed successfully`)
+              refetchPending()
+              refetchAll()
+              Alert.alert('Success', `User has been ${actionText.toLowerCase()}ed successfully`)
             } catch (error: any) {
-              Alert.alert('Error', error.message)
+              console.error(`${actionText} error:`, error)
+              Alert.alert('Error', error.message || `Failed to ${actionText.toLowerCase()} user`)
             }
           },
         },
       ]
     )
   }
+
+  const handleEditUser = (user: AllUser) => {
+    setSelectedUser(user)
+    setEditApprovalStatus(user.approval_status)
+    setEditRole(user.role || 'user')
+    setShowEditModal(true)
+  }
+
+  const confirmEditUser = async () => {
+    if (!selectedUser) return
+    
+    try {
+      const result = await updateUserStatus.mutateAsync({
+        userId: selectedUser.id,
+        approval_status: editApprovalStatus,
+        role: editRole,
+      })
+      
+      setShowEditModal(false)
+      setSelectedUser(null)
+      
+      // If user was rejected (deleted), show different message
+      if (editApprovalStatus === 'rejected' || (result as any)?.deleted) {
+        Alert.alert('Success', 'User has been rejected and all their data has been removed from the system')
+      } else {
+        Alert.alert('Success', 'User status updated successfully')
+      }
+      
+      refetchPending()
+      refetchAll()
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to update user status')
+    }
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return Colors.success
+      case 'pending':
+        return '#FFA500'
+      case 'rejected':
+        return Colors.error
+      default:
+        return Colors.textSecondary
+    }
+  }
+
+  const currentUsers = activeTab === 'pending' ? pendingUsers : allUsers
+  const isLoading = activeTab === 'pending' ? pendingLoading : allLoading
+  const isRefetching = activeTab === 'pending' ? isRefetchingPending : isRefetchingAll
+  const refetch = activeTab === 'pending' ? refetchPending : refetchAll
 
   if (isLoading) {
     return (
@@ -73,12 +144,36 @@ export default function AdminApprovalsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>User Approvals</Text>
-        <Text style={styles.headerSubtitle}>Review and approve new user signups</Text>
+        <Text style={styles.headerTitle}>User Management</Text>
+        <Text style={styles.headerSubtitle}>
+          {activeTab === 'pending' ? 'Review and approve new user signups' : 'Manage all users'}
+        </Text>
+      </View>
+
+      {/* Tabs */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'pending' && styles.tabActive]}
+          onPress={() => setActiveTab('pending')}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.tabText, activeTab === 'pending' && styles.tabTextActive]}>
+            Pending ({pendingUsers?.length || 0})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'all' && styles.tabActive]}
+          onPress={() => setActiveTab('all')}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.tabText, activeTab === 'all' && styles.tabTextActive]}>
+            All Users ({allUsers?.length || 0})
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <FlatList
-        data={pendingUsers}
+        data={currentUsers}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         refreshControl={
@@ -90,16 +185,22 @@ export default function AdminApprovalsScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No pending users</Text>
-            <Text style={styles.emptySubtext}>All users have been reviewed</Text>
+            <Text style={styles.emptyText}>
+              {activeTab === 'pending' ? 'No pending users' : 'No users found'}
+            </Text>
+            <Text style={styles.emptySubtext}>
+              {activeTab === 'pending' ? 'All users have been reviewed' : 'Users will appear here once they sign up'}
+            </Text>
           </View>
         }
         renderItem={({ item }) => (
           <UserCard 
             user={item}
             onApprove={() => handleApprove(item)}
-            onDeny={() => handleDeny(item.id, item.full_name || 'User')}
-            isLoading={approveUser.isPending || denyUser.isPending}
+            onDeny={() => handleDeny(item.id, item.full_name || 'User', item.approval_status)}
+            onEdit={activeTab === 'all' ? () => handleEditUser(item as AllUser) : undefined}
+            isLoading={approveUser.isPending || denyUser.isPending || updateUserStatus.isPending}
+            showEdit={activeTab === 'all'}
           />
         )}
         showsVerticalScrollIndicator={false}
@@ -109,15 +210,27 @@ export default function AdminApprovalsScreen() {
       <Modal
         visible={showApproveModal}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => {
           setShowApproveModal(false)
           setSelectedUser(null)
           setMakeAdmin(false)
         }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => {
+            setShowApproveModal(false)
+            setSelectedUser(null)
+            setMakeAdmin(false)
+          }}
+        >
+          <TouchableOpacity
+            style={styles.modalContent}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
             <Text style={styles.modalTitle}>Approve User</Text>
             
             <Text style={styles.modalText}>
@@ -164,27 +277,154 @@ export default function AdminApprovalsScreen() {
                 )}
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Edit User Modal */}
+      <Modal
+        visible={showEditModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowEditModal(false)
+          setSelectedUser(null)
+        }}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => {
+            setShowEditModal(false)
+            setSelectedUser(null)
+          }}
+        >
+          <TouchableOpacity
+            style={styles.modalContent}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={styles.modalTitle}>Edit User Status</Text>
+            
+            <Text style={styles.modalText}>
+              Edit status for {selectedUser?.full_name || 'this user'}
+            </Text>
+
+            {/* Approval Status Selection */}
+            <View style={styles.editSection}>
+              <Text style={styles.editLabel}>Approval Status</Text>
+              <View style={styles.statusButtons}>
+                {(['pending', 'approved', 'rejected'] as const).map((status) => (
+                  <TouchableOpacity
+                    key={status}
+                    style={[
+                      styles.statusButton,
+                      editApprovalStatus === status && styles.statusButtonActive,
+                      { borderColor: getStatusColor(status) }
+                    ]}
+                    onPress={() => setEditApprovalStatus(status)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[
+                      styles.statusButtonText,
+                      editApprovalStatus === status && styles.statusButtonTextActive
+                    ]}>
+                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Role Toggle */}
+            <View style={styles.adminToggleContainer}>
+              <View style={styles.adminToggleTextContainer}>
+                <Text style={styles.adminToggleLabel}>Admin Role</Text>
+                <Text style={styles.adminToggleDescription}>
+                  Grant or revoke admin privileges for this user.
+                </Text>
+              </View>
+              <Switch
+                value={editRole === 'admin'}
+                onValueChange={(value) => setEditRole(value ? 'admin' : 'user')}
+                trackColor={{ false: Colors.borderLight, true: Colors.primary }}
+                thumbColor={Colors.surface}
+              />
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => {
+                  setShowEditModal(false)
+                  setSelectedUser(null)
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalButtonTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonApprove]}
+                onPress={confirmEditUser}
+                disabled={updateUserStatus.isPending}
+                activeOpacity={0.8}
+              >
+                {updateUserStatus.isPending ? (
+                  <ActivityIndicator color={Colors.text} />
+                ) : (
+                  <Text style={styles.modalButtonTextApprove}>Save Changes</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
     </View>
   )
 }
 
-function UserCard({ user, onApprove, onDeny, isLoading }: { 
-  user: PendingUser
-  onApprove: (user: PendingUser) => void
+function UserCard({ user, onApprove, onDeny, onEdit, isLoading, showEdit }: { 
+  user: PendingUser | AllUser
+  onApprove: (user: PendingUser | AllUser) => void
   onDeny: () => void
+  onEdit?: () => void
   isLoading: boolean
+  showEdit?: boolean
 }) {
   const createdDate = new Date(user.created_at).toLocaleDateString()
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return Colors.success
+      case 'pending':
+        return '#FFA500'
+      case 'rejected':
+        return Colors.error
+      default:
+        return Colors.textSecondary
+    }
+  }
+  
+  const denyButtonText = user.approval_status === 'approved' ? 'Reject' : 'Deny'
   
   return (
     <View style={CommonStyles.card}>
       <View style={styles.cardHeader}>
-        <View style={styles.cardTitleContainer}>
+        <View style={styles.cardHeaderRow}>
           <Text style={styles.cardTitle}>{user.full_name || 'No Name'}</Text>
+          {showEdit && (
+            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(user.approval_status) }]}>
+              <Text style={styles.statusBadgeText}>
+                {user.approval_status.charAt(0).toUpperCase() + user.approval_status.slice(1)}
+              </Text>
+            </View>
+          )}
         </View>
+        {showEdit && (user as AllUser).role === 'admin' && (
+          <View style={styles.adminBadge}>
+            <Text style={styles.adminBadgeText}>Admin</Text>
+          </View>
+        )}
       </View>
       
       <View style={styles.cardInfo}>
@@ -195,22 +435,48 @@ function UserCard({ user, onApprove, onDeny, isLoading }: {
       </View>
 
       <View style={styles.cardActions}>
+        {showEdit ? (
+          // All users in "All Users" tab: Only Edit button
           <TouchableOpacity
-            style={[styles.actionButton, styles.approveButton]}
-            onPress={() => onApprove(user)}
+            style={[styles.actionButton, styles.editButton, isLoading && styles.actionButtonDisabled]}
+            onPress={onEdit}
             disabled={isLoading}
             activeOpacity={0.8}
           >
-            <Text style={styles.actionButtonText}>Approve</Text>
+            {isLoading ? (
+              <ActivityIndicator color={Colors.text} size="small" />
+            ) : (
+              <Text style={styles.actionButtonText}>Edit</Text>
+            )}
           </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.denyButton]}
-          onPress={onDeny}
-          disabled={isLoading}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.actionButtonText}>Deny</Text>
-        </TouchableOpacity>
+        ) : (
+          <>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.approveButton, isLoading && styles.actionButtonDisabled]}
+              onPress={() => onApprove(user)}
+              disabled={isLoading}
+              activeOpacity={0.8}
+            >
+              {isLoading ? (
+                <ActivityIndicator color={Colors.text} size="small" />
+              ) : (
+                <Text style={styles.actionButtonText}>Approve</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.denyButton, isLoading && styles.actionButtonDisabled]}
+              onPress={onDeny}
+              disabled={isLoading}
+              activeOpacity={0.8}
+            >
+              {isLoading ? (
+                <ActivityIndicator color={Colors.text} size="small" />
+              ) : (
+                <Text style={styles.actionButtonText}>{denyButtonText}</Text>
+              )}
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     </View>
   )
@@ -239,6 +505,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
   },
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: Colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+    paddingHorizontal: 20,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    borderBottomColor: Colors.primary,
+  },
+  tabText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  tabTextActive: {
+    color: Colors.primary,
+  },
   listContent: {
     padding: 20,
   },
@@ -260,6 +551,12 @@ const styles = StyleSheet.create({
   cardHeader: {
     marginBottom: 12,
   },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   cardTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -268,6 +565,31 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: Colors.text,
+    flex: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  statusBadgeText: {
+    color: Colors.text,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  adminBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  adminBadgeText: {
+    color: Colors.text,
+    fontSize: 11,
+    fontWeight: '600',
   },
   cardInfo: {
     marginBottom: 16,
@@ -279,7 +601,8 @@ const styles = StyleSheet.create({
   },
   cardActions: {
     flexDirection: 'row',
-    gap: 12,
+    flexWrap: 'wrap',
+    gap: 8,
     marginTop: 8,
   },
   actionButton: {
@@ -295,6 +618,15 @@ const styles = StyleSheet.create({
   },
   denyButton: {
     backgroundColor: Colors.error,
+  },
+  editButton: {
+    backgroundColor: Colors.primary,
+  },
+  removeButton: {
+    backgroundColor: '#8B0000', // Dark red for permanent removal
+  },
+  actionButtonDisabled: {
+    opacity: 0.5,
   },
   actionButtonText: {
     color: Colors.text,
@@ -386,5 +718,39 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontSize: 16,
     fontWeight: '600',
+  },
+  editSection: {
+    marginBottom: 24,
+  },
+  editLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: 12,
+  },
+  statusButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  statusButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.background,
+  },
+  statusButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  statusButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  statusButtonTextActive: {
+    color: Colors.text,
   },
 })

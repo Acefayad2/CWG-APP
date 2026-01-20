@@ -25,3 +25,9 @@ CREATE POLICY "Admins can update approval status"
   ON public.profiles FOR UPDATE
   USING (public.is_admin(auth.uid()))
   WITH CHECK (public.is_admin(auth.uid()));
+
+-- RLS Policy: Admins can delete profiles
+DROP POLICY IF EXISTS "Admins can delete profiles" ON public.profiles;
+CREATE POLICY "Admins can delete profiles"
+  ON public.profiles FOR DELETE
+  USING (public.is_admin(auth.uid()));
