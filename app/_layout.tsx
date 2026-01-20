@@ -12,9 +12,9 @@ export default function RootLayout() {
 }
 
 function AuthLayout() {
-  // Dashboard is now the default - auth routes are hidden
   return (
     <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="script/[id]" options={{ headerShown: true, title: 'Script Details' }} />
       <Stack.Screen name="script/create" options={{ headerShown: true, title: 'Create Script' }} />
