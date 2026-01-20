@@ -11,13 +11,22 @@ export default function IndexScreen() {
     const checkAuthAndRedirect = async () => {
       if (session?.user?.id) {
         // Check approval status
-        const { data: profile } = await supabase
+        const { data: profile, error } = await supabase
           .from('profiles')
           .select('approval_status')
           .eq('id', session.user.id)
           .single()
         
-        if (profile?.approval_status === 'pending') {
+        // If profile doesn't exist or approval_status is missing, allow access
+        // (This handles edge cases where SQL setup might be incomplete)
+        if (error || !profile) {
+          console.warn('Profile check failed, allowing access:', error)
+          router.replace('/(tabs)/scripts')
+          return
+        }
+        
+        // Redirect to awaiting approval if status is pending
+        if (profile.approval_status === 'pending') {
           router.replace('/awaiting-approval')
         } else {
           router.replace('/(tabs)/scripts')
