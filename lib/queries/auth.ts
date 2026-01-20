@@ -36,18 +36,17 @@ export function useSignUp() {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            full_name: fullName,
+          },
+        },
       })
       if (authError) throw authError
       if (!authData.user) throw new Error('User creation failed')
 
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: authData.user.id,
-          full_name: fullName,
-          role: 'user',
-        })
-      if (profileError) throw profileError
+      // Profile is automatically created by trigger, so we don't need to insert manually
+      // The trigger uses raw_user_meta_data->>'full_name' to set the full_name field
 
       return authData
     },
