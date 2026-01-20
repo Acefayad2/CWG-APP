@@ -12,10 +12,19 @@ export function useProfile(userId?: string) {
         .select('*')
         .eq('id', userId)
         .single()
-      if (error) throw error
+      
+      if (error) {
+        console.error('Profile query error:', error)
+        // Log more details for debugging
+        if (error.code === 'PGRST116') {
+          console.error('Profile not found for user:', userId)
+        }
+        throw error
+      }
       return data as Profile
     },
     enabled: !!userId,
+    retry: 1,
   })
 }
 
@@ -90,9 +99,24 @@ export function useSignIn() {
       if (error) throw error
       return data
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['session'] })
-      queryClient.invalidateQueries({ queryKey: ['profile'] })
+    onSuccess: async (data) => {
+      // Set session data immediately
+      if (data.session) {
+        queryClient.setQueryData(['session'], data.session)
+      }
+      
+      // Invalidate and refetch session to ensure it's fresh
+      await queryClient.invalidateQueries({ queryKey: ['session'] })
+      await queryClient.refetchQueries({ queryKey: ['session'] })
+      
+      // If we have a user ID, refetch their profile immediately
+      if (data.session?.user?.id) {
+        await queryClient.invalidateQueries({ queryKey: ['profile', data.session.user.id] })
+        await queryClient.refetchQueries({ queryKey: ['profile', data.session.user.id] })
+      } else {
+        // Invalidate all profile queries
+        queryClient.invalidateQueries({ queryKey: ['profile'] })
+      }
     },
   })
 }
@@ -136,8 +160,12 @@ export function useUpdateProfile() {
       if (error) throw error
       return data
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['profile', variables.userId] })
+    onSuccess: async (data, variables) => {
+      // Update the cache immediately with the new data
+      queryClient.setQueryData(['profile', variables.userId], data)
+      // Also invalidate to ensure fresh data
+      await queryClient.invalidateQueries({ queryKey: ['profile', variables.userId] })
+      await queryClient.refetchQueries({ queryKey: ['profile', variables.userId] })
     },
   })
 }
@@ -174,10 +202,19 @@ export function usePendingUsers() {
 export function useApproveUser() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (userId: string) => {
+    mutationFn: async ({ userId, makeAdmin = false }: { userId: string; makeAdmin?: boolean }) => {
+      const updates: { approval_status: string; role?: string } = {
+        approval_status: 'approved',
+      }
+      
+      // If makeAdmin is true, also set role to admin
+      if (makeAdmin) {
+        updates.role = 'admin'
+      }
+      
       const { data, error } = await supabase
         .from('profiles')
-        .update({ approval_status: 'approved' })
+        .update(updates)
         .eq('id', userId)
         .select()
         .single()

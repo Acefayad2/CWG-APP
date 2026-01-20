@@ -101,10 +101,25 @@ export default function ContactsScreen() {
     try {
       setImporting(true)
       
-      // Request permission
+      // Request permission - this will prompt the device to ask user
       const { status } = await Contacts.requestPermissionsAsync()
+      
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Contacts permission is required to import contacts')
+        Alert.alert(
+          'Permission Denied', 
+          'Contacts permission is required to import your contact list. Please enable it in your device settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Open Settings', 
+              onPress: () => {
+                // On iOS/Android, this would typically open app settings
+                // For now, just show a message
+                Alert.alert('Settings', 'Please go to your device Settings > App Permissions > Contacts and enable access.')
+              }
+            }
+          ]
+        )
         setImporting(false)
         return
       }
@@ -113,6 +128,12 @@ export default function ContactsScreen() {
       const { data } = await Contacts.getContactsAsync({
         fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
       })
+
+      if (!data || data.length === 0) {
+        Alert.alert('No Contacts', 'No contacts found on your device')
+        setImporting(false)
+        return
+      }
 
       // Filter and format contacts
       const contactsToImport = data
@@ -128,27 +149,61 @@ export default function ContactsScreen() {
         .filter(contact => contact.phone_number.length > 0)
 
       if (contactsToImport.length === 0) {
-        Alert.alert('No Contacts', 'No contacts with phone numbers found')
+        Alert.alert('No Contacts', 'No contacts with phone numbers found on your device')
         setImporting(false)
         return
       }
 
-      // Import to Supabase (batch insert - handle duplicates with UNIQUE constraint)
-      await importContacts.mutateAsync({
-        userId: session.user.id,
-        contacts: contactsToImport,
-      })
+      // Check existing contacts to avoid duplicates
+      const existingContacts = userContacts || []
+      const existingPhoneNumbers = new Set(
+        existingContacts.map(c => `${c.phone_number}`.trim().toLowerCase())
+      )
 
-      Alert.alert('Success', `Imported ${contactsToImport.length} contacts`)
-      refetch()
-    } catch (error: any) {
-      if (error.code === '23505') {
-        // Unique constraint violation - some contacts already exist
-        Alert.alert('Import Complete', 'Contacts imported. Some contacts were already in your list.')
-        refetch()
-      } else {
-        Alert.alert('Error', error.message || 'Failed to import contacts')
+      // Filter out duplicates
+      const newContacts = contactsToImport.filter(
+        contact => !existingPhoneNumbers.has(contact.phone_number.trim().toLowerCase())
+      )
+
+      if (newContacts.length === 0) {
+        Alert.alert('Import Complete', 'All contacts are already in your list.')
+        setImporting(false)
+        return
       }
+
+      // Import to Supabase
+      try {
+        await importContacts.mutateAsync({
+          userId: session.user.id,
+          contacts: newContacts,
+        })
+
+        const duplicateCount = contactsToImport.length - newContacts.length
+        if (duplicateCount > 0) {
+          Alert.alert(
+            'Import Complete', 
+            `Imported ${newContacts.length} new contacts. ${duplicateCount} contacts were already in your list.`
+          )
+        } else {
+          Alert.alert('Success', `Imported ${newContacts.length} contacts`)
+        }
+        
+        refetch()
+      } catch (error: any) {
+        if (error.code === '23505') {
+          // Unique constraint violation - some contacts already exist
+          Alert.alert(
+            'Import Complete', 
+            'Contacts imported. Some contacts were already in your list.'
+          )
+          refetch()
+        } else {
+          throw error
+        }
+      }
+    } catch (error: any) {
+      console.error('Import contacts error:', error)
+      Alert.alert('Error', error.message || 'Failed to import contacts. Please try again.')
     } finally {
       setImporting(false)
     }

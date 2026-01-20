@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { View, Text, TouchableOpacity, ActivityIndicator, Alert, StyleSheet, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -12,85 +12,85 @@ export default function ProfileScreen() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const { data: session, isLoading: sessionLoading } = useSession()
-  const { data: profile, isLoading: profileLoading } = useProfile(session?.user?.id)
+  const { data: profile, isLoading: profileLoading, error: profileError, refetch: refetchProfile } = useProfile(session?.user?.id)
   const updateProfile = useUpdateProfile()
   
   const [showEditModal, setShowEditModal] = useState(false)
   const [editName, setEditName] = useState('')
   const [isSigningOut, setIsSigningOut] = useState(false)
 
-  const handleSignOut = () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            setIsSigningOut(true)
-            try {
-              // Step 1: Sign out from Supabase (this clears AsyncStorage session)
-              const { error: signOutError } = await supabase.auth.signOut()
-              
-              if (signOutError) {
-                console.error('Sign out error:', signOutError)
-                throw signOutError
-              }
-              
-              // Step 2: Clear all cached queries immediately - prevents data leakage
-              queryClient.clear()
-              
-              // Step 3: Force set session and profile to null in cache
-              queryClient.setQueryData(['session'], null)
-              queryClient.setQueryData(['profile'], null)
-              queryClient.setQueryData(['pending_users'], null)
-              
-              // Step 4: Invalidate all auth-related queries to trigger fresh checks
-              await queryClient.invalidateQueries({ queryKey: ['session'], refetchType: 'none' })
-              await queryClient.invalidateQueries({ queryKey: ['profile'], refetchType: 'none' })
-              
-              // Step 5: Wait to ensure all state is cleared before navigation
-              await new Promise(resolve => setTimeout(resolve, 200))
-              
-              // Step 6: Verify session is completely cleared
-              const { data: { session: verifySession } } = await supabase.auth.getSession()
-              if (verifySession) {
-                // If session still exists, force sign out again (security measure)
-                await supabase.auth.signOut()
-                queryClient.setQueryData(['session'], null)
-                await new Promise(resolve => setTimeout(resolve, 100))
-              }
-              
-              // Step 7: Reset navigation stack completely - prevents back button access
-              // dismissAll() clears entire navigation history
-              router.dismissAll()
-              
-              // Step 8: Navigate to login (this replaces entire stack)
-              router.replace('/(auth)/login')
-              
-              // Step 9: Final security check - ensure no session data remains
-              // Force clear one more time after navigation
-              setTimeout(() => {
-                queryClient.clear()
-                queryClient.setQueryData(['session'], null)
-              }, 100)
-              
-            } catch (error) {
-              console.error('Sign out error:', error)
-              // Even on error, clear everything and navigate
-              queryClient.clear()
-              queryClient.setQueryData(['session'], null)
-              router.dismissAll()
-              router.replace('/(auth)/login')
-            } finally {
-              setIsSigningOut(false)
-            }
-          },
-        },
-      ]
-    )
+  // Force refetch profile when component mounts and session is available
+  useEffect(() => {
+    if (session?.user?.id && !profileLoading) {
+      // Try direct fetch first, then refetch query
+      const fetchProfileDirectly = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single()
+          
+          if (error) {
+            console.error('Direct profile fetch error:', error)
+          } else {
+            console.log('Direct profile fetch success:', data)
+            // Update cache with direct fetch result
+            queryClient.setQueryData(['profile', session.user.id], data)
+          }
+        } catch (err) {
+          console.error('Direct profile fetch exception:', err)
+        }
+        
+        // Also try refetch
+        refetchProfile().catch(err => {
+          console.error('Profile refetch error:', err)
+        })
+      }
+      
+      fetchProfileDirectly()
+    }
+  }, [session?.user?.id])
+
+  // Log profile data for debugging
+  useEffect(() => {
+    if (profile) {
+      console.log('Profile loaded:', { full_name: profile.full_name, role: profile.role, id: profile.id })
+    }
+    if (profileError) {
+      console.error('Profile error:', profileError)
+    }
+    if (!profile && !profileLoading && session?.user?.id) {
+      console.warn('Profile is null but session exists:', session.user.id)
+    }
+  }, [profile, profileError, profileLoading, session?.user?.id])
+
+  const handleSignOut = async () => {
+    setIsSigningOut(true)
+    
+    try {
+      // Sign out from Supabase first
+      await supabase.auth.signOut()
+      
+      // Clear all cached queries
+      queryClient.clear()
+      queryClient.setQueryData(['session'], null)
+      queryClient.setQueryData(['profile'], null)
+      queryClient.setQueryData(['pending_users'], null)
+      
+      // Navigate to login
+      router.dismissAll()
+      router.replace('/(auth)/login')
+    } catch (error) {
+      console.error('Sign out error:', error)
+      // Even on error, clear everything and navigate
+      queryClient.clear()
+      queryClient.setQueryData(['session'], null)
+      router.dismissAll()
+      router.replace('/(auth)/login')
+    } finally {
+      setIsSigningOut(false)
+    }
   }
 
   const handleEditProfile = () => {
@@ -99,18 +99,34 @@ export default function ProfileScreen() {
   }
 
   const handleSaveProfile = async () => {
-    if (!session?.user?.id) return
+    if (!session?.user?.id) {
+      Alert.alert('Error', 'Session not available')
+      return
+    }
+
+    const trimmedName = editName.trim()
+    if (!trimmedName) {
+      Alert.alert('Error', 'Name cannot be empty')
+      return
+    }
 
     try {
-      await updateProfile.mutateAsync({
+      const updated = await updateProfile.mutateAsync({
         userId: session.user.id,
         updates: {
-          full_name: editName.trim() || profile?.full_name || '',
+          full_name: trimmedName,
         },
       })
+      
+      console.log('Profile updated:', updated)
+      
+      // Force refetch to ensure UI updates
+      await refetchProfile()
+      
       setShowEditModal(false)
       Alert.alert('Success', 'Profile updated successfully')
     } catch (error: any) {
+      console.error('Update profile error:', error)
       Alert.alert('Error', error.message || 'Failed to update profile')
     }
   }
@@ -119,6 +135,49 @@ export default function ProfileScreen() {
     return (
       <View style={[CommonStyles.centered, { backgroundColor: Colors.background }]}>
         <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    )
+  }
+
+  // Show error if profile failed to load
+  if (profileError) {
+    // Extract error message properly
+    let errorMessage = 'Unknown error'
+    if (profileError instanceof Error) {
+      errorMessage = profileError.message
+    } else if (typeof profileError === 'object' && profileError !== null) {
+      // Handle Supabase error objects
+      if ('message' in profileError) {
+        errorMessage = String(profileError.message)
+      } else if ('code' in profileError) {
+        errorMessage = `Error code: ${profileError.code}`
+      } else {
+        errorMessage = JSON.stringify(profileError)
+      }
+    } else {
+      errorMessage = String(profileError)
+    }
+
+    return (
+      <View style={[CommonStyles.centered, { backgroundColor: Colors.background, padding: 20 }]}>
+        <Text style={{ color: Colors.error, marginBottom: 10, textAlign: 'center', fontSize: 16, fontWeight: '600' }}>
+          Failed to load profile
+        </Text>
+        <Text style={{ color: Colors.textSecondary, marginBottom: 20, fontSize: 12, textAlign: 'center' }}>
+          {errorMessage}
+        </Text>
+        <TouchableOpacity
+          style={[CommonStyles.button, CommonStyles.buttonPrimary, { marginBottom: 10 }]}
+          onPress={async () => {
+            try {
+              await refetchProfile()
+            } catch (err) {
+              console.error('Retry failed:', err)
+            }
+          }}
+        >
+          <Text style={CommonStyles.buttonText}>Retry</Text>
+        </TouchableOpacity>
       </View>
     )
   }

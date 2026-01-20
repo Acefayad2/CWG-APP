@@ -1,18 +1,16 @@
 import { useState } from 'react'
-import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, RefreshControl, Alert, StyleSheet, Modal, Switch, Platform } from 'react-native'
-import { useRouter } from 'expo-router'
+import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, RefreshControl, Alert, StyleSheet, Platform, Modal, Switch } from 'react-native'
 import { useSession } from '@/lib/queries/auth'
 import { usePendingUsers, useApproveUser, useDenyUser, PendingUser } from '@/lib/queries/auth'
 import { Colors } from '@/constants/Colors'
 import { CommonStyles } from '@/constants/Styles'
 
-export default function AdminApprovalsScreen() {
-  const router = useRouter()
+export default function ApprovalsScreen() {
   const { data: session } = useSession()
   const { data: pendingUsers, isLoading, refetch, isRefetching } = usePendingUsers()
   const approveUser = useApproveUser()
   const denyUser = useDenyUser()
-
+  
   const [showApproveModal, setShowApproveModal] = useState(false)
   const [selectedUser, setSelectedUser] = useState<PendingUser | null>(null)
   const [makeAdmin, setMakeAdmin] = useState(false)
@@ -180,21 +178,20 @@ function UserCard({ user, onApprove, onDeny, isLoading }: {
   const createdDate = new Date(user.created_at).toLocaleDateString()
   
   return (
-    <View style={CommonStyles.card}>
-      <View style={styles.cardHeader}>
-        <View style={styles.cardTitleContainer}>
+    <View style={styles.userCard}>
+      <View style={styles.cardContent}>
+        <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>{user.full_name || 'No Name'}</Text>
         </View>
-      </View>
-      
-      <View style={styles.cardInfo}>
-        <Text style={styles.cardInfoText}>Created: {createdDate}</Text>
-        {user.email && (
-          <Text style={styles.cardInfoText}>Email: {user.email}</Text>
-        )}
-      </View>
+        
+        <View style={styles.cardInfo}>
+          <Text style={styles.cardInfoText}>Created: {createdDate}</Text>
+          {user.email && (
+            <Text style={styles.cardInfoText}>Email: {user.email}</Text>
+          )}
+        </View>
 
-      <View style={styles.cardActions}>
+        <View style={styles.cardActions}>
           <TouchableOpacity
             style={[styles.actionButton, styles.approveButton]}
             onPress={() => onApprove(user)}
@@ -203,14 +200,15 @@ function UserCard({ user, onApprove, onDeny, isLoading }: {
           >
             <Text style={styles.actionButtonText}>Approve</Text>
           </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.denyButton]}
-          onPress={onDeny}
-          disabled={isLoading}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.actionButtonText}>Deny</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.denyButton]}
+            onPress={onDeny}
+            disabled={isLoading}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.actionButtonText}>Deny</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   )
@@ -240,7 +238,8 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   listContent: {
-    padding: 20,
+    padding: 16,
+    paddingBottom: 20,
   },
   emptyState: {
     alignItems: 'center',
@@ -257,16 +256,37 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
   },
+  userCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    marginBottom: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    ...Platform.select({
+      ios: {
+        shadowColor: Colors.shadowDark,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+      web: {
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+      },
+    }),
+  },
+  cardContent: {
+    padding: 20,
+  },
   cardHeader: {
     marginBottom: 12,
   },
-  cardTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   cardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: Colors.text,
   },
   cardInfo: {

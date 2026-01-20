@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, StyleSheet, KeyboardAvoidingView, Platform, BackHandler } from 'react-native'
 import { Link, useRouter, useFocusEffect } from 'expo-router'
 import { useSignIn, useSession } from '@/lib/queries/auth'
+import { useQueryClient } from '@tanstack/react-query'
 import { signInSchema, SignInInput } from '@/utils/validation'
 import { Colors } from '@/constants/Colors'
 import { CommonStyles } from '@/constants/Styles'
@@ -14,6 +15,7 @@ export default function LoginScreen() {
   const [focused, setFocused] = useState<string | null>(null)
   const signIn = useSignIn()
   const router = useRouter()
+  const queryClient = useQueryClient()
   const { data: session } = useSession()
 
   // Redirect if already logged in
@@ -59,15 +61,31 @@ export default function LoginScreen() {
       const validated = signInSchema.parse({ email, password })
       const authData = await signIn.mutateAsync(validated)
       
-      // Check approval status after login
+      // Ensure session is set in cache
+      if (authData.session) {
+        queryClient.setQueryData(['session'], authData.session)
+      }
+      
+      // Wait for profile to be refetched
       if (authData.user?.id) {
+        // Refetch profile to ensure we have latest data including role
+        await queryClient.refetchQueries({ queryKey: ['profile', authData.user.id] })
+        
+        // Get profile data
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('approval_status')
+          .select('approval_status, role')
           .eq('id', authData.user.id)
           .single()
         
-        if (!profileError && profile) {
+        if (profileError) {
+          console.error('Profile fetch error:', profileError)
+          // If profile doesn't exist, still allow login (edge case)
+          router.replace('/(tabs)/scripts')
+          return
+        }
+        
+        if (profile) {
           const approvalStatus = (profile as any).approval_status
           if (approvalStatus === 'pending') {
             router.replace('/awaiting-approval')
@@ -76,6 +94,7 @@ export default function LoginScreen() {
         }
       }
       
+      // User is approved - navigate to app
       router.replace('/(tabs)/scripts')
     } catch (error: any) {
       if (error.errors) {
