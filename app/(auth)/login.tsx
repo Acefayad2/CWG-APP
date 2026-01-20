@@ -1,7 +1,7 @@
-import { useState } from 'react'
-import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native'
-import { Link, useRouter } from 'expo-router'
-import { useSignIn } from '@/lib/queries/auth'
+import React, { useState, useEffect } from 'react'
+import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, StyleSheet, KeyboardAvoidingView, Platform, BackHandler } from 'react-native'
+import { Link, useRouter, useFocusEffect } from 'expo-router'
+import { useSignIn, useSession } from '@/lib/queries/auth'
 import { signInSchema, SignInInput } from '@/utils/validation'
 import { Colors } from '@/constants/Colors'
 import { CommonStyles } from '@/constants/Styles'
@@ -14,6 +14,44 @@ export default function LoginScreen() {
   const [focused, setFocused] = useState<string | null>(null)
   const signIn = useSignIn()
   const router = useRouter()
+  const { data: session } = useSession()
+
+  // Redirect if already logged in
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      if (currentSession?.user?.id) {
+        // User is already logged in, redirect to app
+        router.replace('/(tabs)/scripts')
+      }
+    }
+    checkSession()
+  }, [router])
+
+  // Prevent back button on login page (after logout)
+  useFocusEffect(
+    React.useCallback(() => {
+      const onBackPress = () => {
+        // If there's no session, prevent going back
+        const checkSession = async () => {
+          const { data: { session: currentSession } } = await supabase.auth.getSession()
+          if (!currentSession) {
+            // No session - exit app instead of going back
+            if (Platform.OS === 'android') {
+              BackHandler.exitApp()
+              return true
+            }
+          }
+          return false
+        }
+        checkSession()
+        return true // Prevent default back behavior
+      }
+
+      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress)
+      return () => subscription.remove()
+    }, [])
+  )
 
   const handleLogin = async () => {
     try {

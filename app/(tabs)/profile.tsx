@@ -39,33 +39,43 @@ export default function ProfileScreen() {
                 throw signOutError
               }
               
-              // Step 2: Clear all cached queries immediately
+              // Step 2: Clear all cached queries immediately - prevents data leakage
               queryClient.clear()
               
-              // Step 3: Force set session to null
+              // Step 3: Force set session and profile to null in cache
               queryClient.setQueryData(['session'], null)
               queryClient.setQueryData(['profile'], null)
+              queryClient.setQueryData(['pending_users'], null)
               
-              // Step 4: Invalidate all auth-related queries
-              queryClient.invalidateQueries({ queryKey: ['session'] })
-              queryClient.invalidateQueries({ queryKey: ['profile'] })
+              // Step 4: Invalidate all auth-related queries to trigger fresh checks
+              await queryClient.invalidateQueries({ queryKey: ['session'], refetchType: 'none' })
+              await queryClient.invalidateQueries({ queryKey: ['profile'], refetchType: 'none' })
               
-              // Step 5: Wait briefly to ensure state is cleared
-              await new Promise(resolve => setTimeout(resolve, 150))
+              // Step 5: Wait to ensure all state is cleared before navigation
+              await new Promise(resolve => setTimeout(resolve, 200))
               
-              // Step 6: Navigate to login and reset navigation stack
-              // Using dismissAll() to clear navigation history prevents back button access
-              router.dismissAll()
-              router.replace('/(auth)/login')
-              
-              // Step 7: Additional security - clear any remaining session data
-              // Force a fresh session check
+              // Step 6: Verify session is completely cleared
               const { data: { session: verifySession } } = await supabase.auth.getSession()
               if (verifySession) {
-                // If session still exists, force sign out again
+                // If session still exists, force sign out again (security measure)
                 await supabase.auth.signOut()
                 queryClient.setQueryData(['session'], null)
+                await new Promise(resolve => setTimeout(resolve, 100))
               }
+              
+              // Step 7: Reset navigation stack completely - prevents back button access
+              // dismissAll() clears entire navigation history
+              router.dismissAll()
+              
+              // Step 8: Navigate to login (this replaces entire stack)
+              router.replace('/(auth)/login')
+              
+              // Step 9: Final security check - ensure no session data remains
+              // Force clear one more time after navigation
+              setTimeout(() => {
+                queryClient.clear()
+                queryClient.setQueryData(['session'], null)
+              }, 100)
               
             } catch (error) {
               console.error('Sign out error:', error)
