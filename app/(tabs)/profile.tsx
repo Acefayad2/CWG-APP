@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { View, Text, TouchableOpacity, ActivityIndicator, Alert, StyleSheet, ScrollView, Modal, TextInput, Image, KeyboardAvoidingView, Platform } from 'react-native'
+import { View, Text, TouchableOpacity, ActivityIndicator, Alert, StyleSheet, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native'
 import { useRouter } from 'expo-router'
-import * as ImagePicker from 'expo-image-picker'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSession } from '@/lib/queries/auth'
 import { useProfile, useUpdateProfile } from '@/lib/queries/auth'
@@ -18,7 +17,6 @@ export default function ProfileScreen() {
   
   const [showEditModal, setShowEditModal] = useState(false)
   const [editName, setEditName] = useState('')
-  const [imageFile, setImageFile] = useState<{ uri: string; type: string; name: string } | null>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
 
   const handleSignOut = () => {
@@ -77,31 +75,7 @@ export default function ProfileScreen() {
 
   const handleEditProfile = () => {
     setEditName(profile?.full_name || '')
-    setImageFile(null)
     setShowEditModal(true)
-  }
-
-  const handlePickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
-    if (status !== 'granted') {
-      Alert.alert('Permission Denied', 'Media library permission is required')
-      return
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    })
-
-    if (!result.canceled && result.assets[0]) {
-      setImageFile({
-        uri: result.assets[0].uri,
-        type: 'image/jpeg',
-        name: result.assets[0].fileName || 'profile.jpg',
-      })
-    }
   }
 
   const handleSaveProfile = async () => {
@@ -113,11 +87,8 @@ export default function ProfileScreen() {
         updates: {
           full_name: editName.trim() || profile?.full_name || '',
         },
-        imageFile: imageFile || undefined,
-        currentPictureUrl: profile?.profile_picture_url || undefined,
       })
       setShowEditModal(false)
-      setImageFile(null)
       Alert.alert('Success', 'Profile updated successfully')
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to update profile')
@@ -133,30 +104,18 @@ export default function ProfileScreen() {
   }
 
   const isAdmin = profile?.role === 'admin'
-  const profilePictureUrl = profile?.profile_picture_url
 
   return (
     <>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.profileCard}>
-          <TouchableOpacity
-            style={styles.avatarContainer}
-            onPress={handlePickImage}
-            activeOpacity={0.8}
-          >
-            {profilePictureUrl ? (
-              <Image source={{ uri: profilePictureUrl }} style={styles.avatarImage} />
-            ) : (
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {(profile?.full_name || 'U')[0].toUpperCase()}
-                </Text>
-              </View>
-            )}
-            <View style={styles.avatarEditBadge}>
-              <Text style={styles.avatarEditText}>📷</Text>
+          <View style={styles.avatarContainer}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {(profile?.full_name || 'U')[0].toUpperCase()}
+              </Text>
             </View>
-          </TouchableOpacity>
+          </View>
           <Text style={styles.name}>{profile?.full_name || 'User'}</Text>
           <Text style={styles.email}>{session?.user?.email}</Text>
           <View style={[styles.roleBadge, isAdmin && styles.roleBadgeAdmin]}>
@@ -260,29 +219,10 @@ export default function ProfileScreen() {
                 />
               </View>
 
-              <View style={styles.modalField}>
-                <Text style={styles.modalLabel}>Profile Picture</Text>
-                <TouchableOpacity
-                  style={styles.imagePickerButton}
-                  onPress={handlePickImage}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.imagePickerText}>
-                    {imageFile ? 'Change Picture' : 'Select Picture'}
-                  </Text>
-                </TouchableOpacity>
-                {imageFile && (
-                  <Image source={{ uri: imageFile.uri }} style={styles.previewImage} />
-                )}
-              </View>
-
               <View style={styles.modalButtons}>
                 <TouchableOpacity
                   style={[styles.modalButton, styles.modalButtonCancel]}
-                  onPress={() => {
-                    setShowEditModal(false)
-                    setImageFile(null)
-                  }}
+                  onPress={() => setShowEditModal(false)}
                   activeOpacity={0.8}
                 >
                   <Text style={styles.modalButtonTextCancel}>Cancel</Text>
@@ -333,31 +273,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  avatarImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-  },
   avatarText: {
     fontSize: 32,
     fontWeight: '700',
     color: '#ffffff',
-  },
-  avatarEditBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: Colors.surface,
-  },
-  avatarEditText: {
-    fontSize: 14,
   },
   name: {
     fontSize: 24,
@@ -501,27 +420,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     minHeight: 48,
-  },
-  imagePickerButton: {
-    backgroundColor: Colors.background,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-  },
-  imagePickerText: {
-    color: Colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  previewImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    marginTop: 12,
-    alignSelf: 'center',
   },
   modalButtons: {
     flexDirection: 'row',
