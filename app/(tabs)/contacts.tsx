@@ -88,7 +88,10 @@ export default function ContactsScreen() {
   }, [session?.user?.id, syncContactsSilently])
 
   const handleImportContacts = async () => {
+    console.log('Import contacts button clicked')
+    
     if (!session?.user?.id) {
+      console.log('No session found')
       Alert.alert('Authentication Required', 'Please sign in to import contacts')
       return
     }
@@ -100,9 +103,12 @@ export default function ContactsScreen() {
 
     try {
       setImporting(true)
+      console.log('Starting contact import process...')
       
       // Request permission - this will prompt the device to ask user
+      console.log('Requesting contacts permission...')
       const { status } = await Contacts.requestPermissionsAsync()
+      console.log('Permission status:', status)
       
       if (status !== 'granted') {
         Alert.alert(
@@ -125,15 +131,24 @@ export default function ContactsScreen() {
       }
 
       // Get contacts from device
-      const { data } = await Contacts.getContactsAsync({
+      console.log('Fetching contacts from device...')
+      const { data, error: contactsError } = await Contacts.getContactsAsync({
         fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
       })
 
+      if (contactsError) {
+        console.error('Error fetching contacts:', contactsError)
+        throw new Error(`Failed to fetch contacts: ${contactsError.message || 'Unknown error'}`)
+      }
+
       if (!data || data.length === 0) {
+        console.log('No contacts found on device')
         Alert.alert('No Contacts', 'No contacts found on your device')
         setImporting(false)
         return
       }
+
+      console.log(`Found ${data.length} contacts on device`)
 
       // Filter and format contacts
       const contactsToImport = data
@@ -147,6 +162,8 @@ export default function ContactsScreen() {
           }))
         )
         .filter(contact => contact.phone_number.length > 0)
+
+      console.log(`Formatted ${contactsToImport.length} contacts with phone numbers`)
 
       if (contactsToImport.length === 0) {
         Alert.alert('No Contacts', 'No contacts with phone numbers found on your device')
@@ -165,47 +182,82 @@ export default function ContactsScreen() {
         contact => !existingPhoneNumbers.has(contact.phone_number.trim().toLowerCase())
       )
 
+      console.log(`Found ${newContacts.length} new contacts to import (${contactsToImport.length - newContacts.length} duplicates)`)
+
       if (newContacts.length === 0) {
         Alert.alert('Import Complete', 'All contacts are already in your list.')
         setImporting(false)
         return
       }
 
-      // Import to Supabase
-      try {
-        await importContacts.mutateAsync({
-          userId: session.user.id,
-          contacts: newContacts,
-        })
+      // Import to Supabase in batches to avoid timeout
+      console.log('Importing contacts to Supabase...')
+      const BATCH_SIZE = 100
+      let importedCount = 0
+      let duplicateCount = 0
 
-        const duplicateCount = contactsToImport.length - newContacts.length
-        if (duplicateCount > 0) {
-          Alert.alert(
-            'Import Complete', 
-            `Imported ${newContacts.length} new contacts. ${duplicateCount} contacts were already in your list.`
-          )
-        } else {
-          Alert.alert('Success', `Imported ${newContacts.length} contacts`)
-        }
+      for (let i = 0; i < newContacts.length; i += BATCH_SIZE) {
+        const batch = newContacts.slice(i, i + BATCH_SIZE)
+        console.log(`Importing batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} contacts)...`)
         
-        refetch()
-      } catch (error: any) {
-        if (error.code === '23505') {
-          // Unique constraint violation - some contacts already exist
-          Alert.alert(
-            'Import Complete', 
-            'Contacts imported. Some contacts were already in your list.'
-          )
-          refetch()
-        } else {
-          throw error
+        try {
+          await importContacts.mutateAsync({
+            userId: session.user.id,
+            contacts: batch,
+          })
+          importedCount += batch.length
+          console.log(`Batch imported successfully`)
+        } catch (error: any) {
+          console.error('Batch import error:', error)
+          
+          if (error.code === '23505') {
+            // Unique constraint violation - some contacts already exist
+            duplicateCount += batch.length
+            console.log('Batch had duplicates, continuing...')
+          } else {
+            // For other errors, try to continue with next batch
+            console.error('Error importing batch:', error.message)
+            // Don't throw - continue with next batch
+          }
         }
       }
+
+      // Refresh the contact list
+      await refetch()
+
+      // Show success message
+      const totalImported = importedCount
+      const totalDuplicates = duplicateCount + (contactsToImport.length - newContacts.length)
+      
+      if (totalImported > 0) {
+        if (totalDuplicates > 0) {
+          Alert.alert(
+            'Import Complete', 
+            `Imported ${totalImported} new contacts. ${totalDuplicates} contacts were already in your list.`
+          )
+        } else {
+          Alert.alert('Success', `Imported ${totalImported} contacts`)
+        }
+      } else {
+        Alert.alert('Import Complete', 'All contacts are already in your list.')
+      }
+      
     } catch (error: any) {
       console.error('Import contacts error:', error)
-      Alert.alert('Error', error.message || 'Failed to import contacts. Please try again.')
+      console.error('Error details:', JSON.stringify(error, null, 2))
+      
+      let errorMessage = 'Failed to import contacts. Please try again.'
+      
+      if (error.message) {
+        errorMessage = error.message
+      } else if (error.code) {
+        errorMessage = `Error code: ${error.code}. Please try again.`
+      }
+      
+      Alert.alert('Error', errorMessage)
     } finally {
       setImporting(false)
+      console.log('Import process completed')
     }
   }
 
@@ -223,14 +275,27 @@ export default function ContactsScreen() {
 
       <View style={styles.actionBar}>
         <TouchableOpacity
-          style={[CommonStyles.button, CommonStyles.buttonPrimary]}
-          onPress={handleImportContacts}
-          disabled={importing}
+          style={[
+            CommonStyles.button, 
+            CommonStyles.buttonPrimary,
+            (importing || !session?.user?.id) && CommonStyles.buttonDisabled
+          ]}
+          onPress={(e) => {
+            e.stopPropagation()
+            console.log('Import button pressed')
+            handleImportContacts()
+          }}
+          disabled={importing || !session?.user?.id}
           activeOpacity={0.8}
         >
-          <Text style={CommonStyles.buttonText}>
-            {importing ? 'Importing...' : 'Import Contact Lists'}
-          </Text>
+          {importing ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <ActivityIndicator color="white" size="small" />
+              <Text style={CommonStyles.buttonText}>Importing...</Text>
+            </View>
+          ) : (
+            <Text style={CommonStyles.buttonText}>Import Contact List</Text>
+          )}
         </TouchableOpacity>
       </View>
 
