@@ -1,23 +1,32 @@
 import { useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native'
 import { useRouter } from 'expo-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { Colors } from '@/constants/Colors'
 import { CommonStyles } from '@/constants/Styles'
 
 export default function AwaitingApprovalScreen() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [isSigningOut, setIsSigningOut] = useState(false)
 
   const handleSignOut = async () => {
     setIsSigningOut(true)
     try {
-      // Sign out from Supabase directly and navigate
+      // Sign out from Supabase directly
       await supabase.auth.signOut()
+      // Clear all cached queries to ensure fresh state
+      queryClient.clear()
+      // Invalidate session query to ensure UI updates
+      queryClient.invalidateQueries({ queryKey: ['session'] })
+      queryClient.invalidateQueries({ queryKey: ['profile'] })
       // Navigate immediately after sign out
       router.replace('/(auth)/login')
     } catch (error) {
       console.error('Sign out error:', error)
+      // Clear queries even on error
+      queryClient.clear()
       // Navigate anyway - session check will handle it
       router.replace('/(auth)/login')
     } finally {

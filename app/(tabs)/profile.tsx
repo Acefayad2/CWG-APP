@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { View, Text, TouchableOpacity, ActivityIndicator, Alert, StyleSheet, ScrollView, Modal, TextInput, Image, KeyboardAvoidingView, Platform } from 'react-native'
 import { useRouter } from 'expo-router'
 import * as ImagePicker from 'expo-image-picker'
+import { useQueryClient } from '@tanstack/react-query'
 import { useSession } from '@/lib/queries/auth'
 import { useProfile, useUpdateProfile } from '@/lib/queries/auth'
 import { supabase } from '@/lib/supabase'
@@ -10,6 +11,7 @@ import { CommonStyles } from '@/constants/Styles'
 
 export default function ProfileScreen() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const { data: session, isLoading: sessionLoading } = useSession()
   const { data: profile, isLoading: profileLoading } = useProfile(session?.user?.id)
   const updateProfile = useUpdateProfile()
@@ -39,12 +41,19 @@ export default function ProfileScreen() {
 
     setIsSigningOut(true)
     try {
-      // Sign out from Supabase directly and navigate
+      // Sign out from Supabase directly
       await supabase.auth.signOut()
+      // Clear all cached queries to ensure fresh state
+      queryClient.clear()
+      // Invalidate session query to ensure UI updates
+      queryClient.invalidateQueries({ queryKey: ['session'] })
+      queryClient.invalidateQueries({ queryKey: ['profile'] })
       // Navigate immediately after sign out
       router.replace('/(auth)/login')
     } catch (error) {
       console.error('Sign out error:', error)
+      // Clear queries even on error
+      queryClient.clear()
       // Navigate anyway - session check will handle it
       router.replace('/(auth)/login')
     } finally {
