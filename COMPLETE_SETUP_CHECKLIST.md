@@ -62,9 +62,10 @@ Run these SQL scripts in order in your Supabase SQL Editor (Dashboard > SQL Edit
   - `supabase/contacts-schema.sql` (creates user_contacts table)
   - `supabase/contact-notes-history-schema.sql` (adds notes and history)
 
-### Step 4.5: Resource User Access
-- [ ] Run `supabase/resources-user-access.sql`
-  - Updates RLS policies to allow users to create/edit/delete their own resources
+### Step 4.5: Resources Admin-Only Policies
+- [ ] Run `supabase/resources-admin-only.sql`
+  - Updates RLS policies so only admins can create/edit/delete resources
+  - Users can still view/download resources
 
 ## 5️⃣ Storage Buckets Setup
 
@@ -234,11 +235,12 @@ If you're setting up from scratch, run these SQL files in this exact order:
 2. `supabase/user-approval-schema.sql` - Approval system
 3. `supabase/profile-picture-schema.sql` - Profile pictures
 4. `supabase/contacts-complete-schema.sql` - Contacts (or run contacts-schema.sql then contact-notes-history-schema.sql)
-5. `supabase/resources-user-access.sql` - Updated resource policies
-6. `supabase/storage-policies.sql` - Storage policies (may be updated by resources-user-access.sql)
+5. `supabase/resources-admin-only.sql` - Admin-only resource policies
+6. `supabase/storage-policies.sql` - Storage policies
 7. `supabase/profile-picture-storage.sql` - Avatar storage policies
+8. `supabase/set-admin-account.sql` - Set acefayad@gmail.com as admin (optional)
 
-**Note**: The `resources-user-access.sql` file updates policies, so it should be run after the base `schema.sql`.
+**Note**: The `resources-admin-only.sql` file updates policies, so it should be run after the base `schema.sql`.
 
 ## 🎯 Quick Start (If Starting Fresh)
 

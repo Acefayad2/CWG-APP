@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Modal } from 'react-native'
+import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Modal, Platform, StyleSheet } from 'react-native'
 import { useRouter } from 'expo-router'
 import * as ImagePicker from 'expo-image-picker'
 import * as DocumentPicker from 'expo-document-picker'
@@ -159,7 +159,7 @@ export default function AdminResourcesScreen() {
         }}
       >
         <View className="flex-1 justify-center items-center bg-black/50">
-          <View className="bg-white rounded-lg p-6 w-5/6">
+          <View style={styles.modalContent}>
             <Text className="text-xl font-bold text-gray-900 mb-4">Resource Title</Text>
             <TextInput
               className="border border-gray-300 rounded-lg px-4 py-3 mb-4 bg-white"
@@ -197,3 +197,21 @@ export default function AdminResourcesScreen() {
     </>
   )
 }
+
+const styles = StyleSheet.create({
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 24,
+    width: Platform.OS === 'web' ? 600 : '83.33%',
+    maxWidth: Platform.OS === 'web' ? '90%' : undefined,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+})

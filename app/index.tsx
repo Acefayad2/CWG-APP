@@ -1,31 +1,39 @@
-import { useState, useEffect } from 'react'
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, Platform } from 'react-native'
+import { useEffect } from 'react'
 import { useRouter } from 'expo-router'
 import { useSession } from '@/lib/queries/auth'
-import { useScripts } from '@/lib/queries/scripts'
-import { useResources } from '@/lib/queries/resources'
-import * as Contacts from 'expo-contacts'
-import { Contact } from '@/types'
-import { Colors } from '@/constants/Colors'
-import { CommonStyles } from '@/constants/Styles'
+import { supabase } from '@/lib/supabase'
 
-export default function DashboardScreen() {
+export default function IndexScreen() {
   const router = useRouter()
   const { data: session } = useSession()
-  const { data: scripts, isLoading: scriptsLoading } = useScripts(session?.user?.id)
-  const { data: resources, isLoading: resourcesLoading } = useResources(session?.user?.id)
-  const [contacts, setContacts] = useState<Contact[]>([])
-  const [contactsLoading, setContactsLoading] = useState(false)
-
-  const isLoading = scriptsLoading || resourcesLoading
 
   useEffect(() => {
-    if (Platform.OS !== 'web') {
-      loadContacts()
+    const checkAuthAndRedirect = async () => {
+      if (session?.user?.id) {
+        // Check approval status
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('approval_status')
+          .eq('id', session.user.id)
+          .single()
+        
+        if (profile?.approval_status === 'pending') {
+          router.replace('/awaiting-approval')
+        } else {
+          router.replace('/(tabs)/scripts')
+        }
+      } else {
+        // Not logged in - redirect to login
+        router.replace('/(auth)/login')
+      }
     }
-  }, [])
 
-  const loadContacts = async () => {
+    checkAuthAndRedirect()
+  }, [session, router])
+
+  // Return null while redirecting
+  return null
+}
     if (Platform.OS === 'web') {
       // For web, we'll allow manual entry
       return

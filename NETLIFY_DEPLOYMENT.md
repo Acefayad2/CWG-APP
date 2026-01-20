@@ -34,13 +34,9 @@ This guide will help you deploy the CWG APP to Netlify.
 
 2. **Add the following variables**:
    ```
-   EXPO_PUBLIC_SUPABASE_URL=your_supabase_project_url
-   EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   EXPO_PUBLIC_SUPABASE_URL=https://exvgwkiugldoramkxmis.supabase.co
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4dmd3a2l1Z2xkb3JhbWt4bWlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzNTUyOTEsImV4cCI6MjA4MzkzMTI5MX0.9d4ITRQyp6LP9LtM3J5UBuC1ak9n-MJWqTmM7u279e0
    ```
-
-   Replace the values with your actual Supabase credentials:
-   - `EXPO_PUBLIC_SUPABASE_URL`: Your Supabase project URL (e.g., `https://xxx.supabase.co`)
-   - `EXPO_PUBLIC_SUPABASE_ANON_KEY`: Your Supabase anon/public key
 
 3. **Click "Save"**
 
@@ -98,7 +94,9 @@ This guide will help you deploy the CWG APP to Netlify.
    - Review the build logs for errors
 
 2. **Common Issues**:
-   - **Missing environment variables**: Make sure `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` are set
+   - **Missing environment variables**: Make sure `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` are set with the following values:
+     - `EXPO_PUBLIC_SUPABASE_URL`: `https://exvgwkiugldoramkxmis.supabase.co`
+     - `EXPO_PUBLIC_SUPABASE_ANON_KEY`: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4dmd3a2l1Z2xkb3JhbWt4bWlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzNTUyOTEsImV4cCI6MjA4MzkzMTI5MX0.9d4ITRQyp6LP9LtM3J5UBuC1ak9n-MJWqTmM7u279e0`
    - **Node version mismatch**: Netlify should use Node 18 (specified in `netlify.toml`)
    - **Build timeout**: Free tier has a 15-minute build limit; upgrade if needed
 

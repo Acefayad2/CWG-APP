@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, RefreshControl, StyleSheet, TextInput, Modal, Alert, ScrollView, KeyboardAvoidingView, Platform } from 'react-native'
+import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, RefreshControl, StyleSheet, TextInput, Modal, Alert, ScrollView, KeyboardAvoidingView, Platform, Switch } from 'react-native'
 import { useRouter } from 'expo-router'
-import { useSession } from '@/lib/queries/auth'
+import { useSession, useProfile } from '@/lib/queries/auth'
 import { useScripts, useCreateScript } from '@/lib/queries/scripts'
 import { ScriptWithFavorite } from '@/types'
 import { Colors } from '@/constants/Colors'
@@ -11,12 +11,16 @@ import { scriptSchema } from '@/utils/validation'
 export default function ScriptsScreen() {
   const router = useRouter()
   const { data: session } = useSession()
+  const { data: profile } = useProfile(session?.user?.id)
   const { data: scripts, isLoading, refetch, isRefetching } = useScripts(session?.user?.id)
   const createScript = useCreateScript()
   const [searchQuery, setSearchQuery] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [scriptTitle, setScriptTitle] = useState('')
   const [scriptBody, setScriptBody] = useState('')
+  const [isAdminScript, setIsAdminScript] = useState(false)
+  
+  const isAdmin = profile?.role === 'admin'
 
   const filteredScripts = scripts?.filter(script =>
     script.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -29,13 +33,14 @@ export default function ScriptsScreen() {
       
       await createScript.mutateAsync({
         ...validated,
-        is_admin: false,
+        is_admin: isAdmin && isAdminScript,
         created_by: session?.user?.id || null,
       })
       
       setShowCreateModal(false)
       setScriptTitle('')
       setScriptBody('')
+      setIsAdminScript(false)
       refetch()
     } catch (error: any) {
       if (error.errors) {
@@ -51,6 +56,7 @@ export default function ScriptsScreen() {
     setShowCreateModal(false)
     setScriptTitle('')
     setScriptBody('')
+    setIsAdminScript(false)
   }
 
   if (isLoading) {
@@ -150,6 +156,25 @@ export default function ScriptsScreen() {
                     textAlignVertical="top"
                   />
                 </View>
+
+                {isAdmin && (
+                  <View style={styles.modalField}>
+                    <View style={styles.adminToggleContainer}>
+                      <View style={styles.adminToggleTextContainer}>
+                        <Text style={styles.modalLabel}>Make visible to all users</Text>
+                        <Text style={styles.adminToggleDescription}>
+                          This script will be available to all users as a static template
+                        </Text>
+                      </View>
+                      <Switch
+                        value={isAdminScript}
+                        onValueChange={setIsAdminScript}
+                        trackColor={{ false: Colors.borderLight, true: Colors.primary }}
+                        thumbColor={Colors.surface}
+                      />
+                    </View>
+                  </View>
+                )}
               </ScrollView>
 
               <View style={styles.modalButtons}>
@@ -327,9 +352,18 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: Colors.surface,
     borderRadius: 16,
-    width: '90%',
-    maxHeight: '80%',
+    width: Platform.OS === 'web' ? 600 : '90%',
+    maxWidth: Platform.OS === 'web' ? '90%' : undefined,
+    maxHeight: '85%',
     padding: 24,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   modalTitle: {
     fontSize: 24,
@@ -338,7 +372,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   modalScrollView: {
-    maxHeight: 400,
+    maxHeight: Platform.OS === 'web' ? 450 : 400,
   },
   modalField: {
     marginBottom: 20,
@@ -363,6 +397,22 @@ const styles = StyleSheet.create({
   modalTextArea: {
     minHeight: 250,
     paddingTop: 12,
+  },
+  adminToggleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  adminToggleTextContainer: {
+    flex: 1,
+    marginRight: 16,
+  },
+  adminToggleDescription: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 4,
+    lineHeight: 18,
   },
   modalButtons: {
     flexDirection: 'row',

@@ -420,9 +420,18 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: Colors.surface,
     borderRadius: 16,
-    width: '90%',
-    maxWidth: 400,
+    width: Platform.OS === 'web' ? 600 : '90%',
+    maxWidth: Platform.OS === 'web' ? '90%' : 400,
+    maxHeight: '85%',
     padding: 24,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   modalTitle: {
     fontSize: 24,

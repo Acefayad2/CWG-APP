@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, Alert, StyleSheet, Platform, RefreshControl, AppState, AppStateStatus, Modal, TextInput, KeyboardAvoidingView, ScrollView } from 'react-native'
+import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, Alert, StyleSheet, Platform, RefreshControl, AppState, AppStateStatus, TextInput } from 'react-native'
 import { useRouter, useFocusEffect } from 'expo-router'
 import * as Contacts from 'expo-contacts'
 import { useSession } from '@/lib/queries/auth'
@@ -13,11 +13,7 @@ export default function ContactsScreen() {
   const { data: userContacts, isLoading, refetch, isRefetching } = useUserContacts(session?.user?.id)
   const importContacts = useImportContacts()
   const [importing, setImporting] = useState(false)
-  const [showAddContactModal, setShowAddContactModal] = useState(false)
-  const [contactName, setContactName] = useState('')
-  const [contactPhone, setContactPhone] = useState('')
-  const [contactPhoneLabel, setContactPhoneLabel] = useState('')
-  const [addingContact, setAddingContact] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const appState = useRef(AppState.currentState)
 
   const syncContactsSilently = useCallback(async () => {
@@ -91,52 +87,6 @@ export default function ContactsScreen() {
     }
   }, [session?.user?.id, syncContactsSilently])
 
-  const handleAddContact = async () => {
-    if (!session?.user?.id) {
-      Alert.alert('Authentication Required', 'Please sign in to add contacts')
-      return
-    }
-
-    if (!contactName.trim() || !contactPhone.trim()) {
-      Alert.alert('Validation Error', 'Name and phone number are required')
-      return
-    }
-
-    try {
-      setAddingContact(true)
-      await importContacts.mutateAsync({
-        userId: session.user.id,
-        contacts: [{
-          user_id: session.user.id,
-          name: contactName.trim(),
-          phone_number: contactPhone.trim(),
-          phone_label: contactPhoneLabel.trim() || undefined,
-        }],
-      })
-      setShowAddContactModal(false)
-      setContactName('')
-      setContactPhone('')
-      setContactPhoneLabel('')
-      refetch()
-      Alert.alert('Success', 'Contact added successfully')
-    } catch (error: any) {
-      if (error.code === '23505') {
-        Alert.alert('Error', 'This contact already exists')
-      } else {
-        Alert.alert('Error', error.message || 'Failed to add contact')
-      }
-    } finally {
-      setAddingContact(false)
-    }
-  }
-
-  const handleCancelAddContact = () => {
-    setShowAddContactModal(false)
-    setContactName('')
-    setContactPhone('')
-    setContactPhoneLabel('')
-  }
-
   const handleImportContacts = async () => {
     if (!session?.user?.id) {
       Alert.alert('Authentication Required', 'Please sign in to import contacts')
@@ -204,6 +154,11 @@ export default function ContactsScreen() {
     }
   }
 
+  const filteredContacts = (userContacts || []).filter(contact =>
+    contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    contact.phone_number.includes(searchQuery)
+  )
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -222,107 +177,26 @@ export default function ContactsScreen() {
             {importing ? 'Importing...' : 'Import Contact Lists'}
           </Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[CommonStyles.button, CommonStyles.buttonOutline, styles.addButton]}
-          onPress={() => {
-            if (!session?.user?.id) {
-              Alert.alert('Authentication Required', 'Please sign in to add contacts')
-              return
-            }
-            setShowAddContactModal(true)
-          }}
-          activeOpacity={0.8}
-        >
-          <Text style={[CommonStyles.buttonTextOutline]}>Add Contact</Text>
-        </TouchableOpacity>
       </View>
 
-      <Modal
-        visible={showAddContactModal}
-        transparent
-        animationType="slide"
-        onRequestClose={handleCancelAddContact}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalOverlay}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Add Contact</Text>
-              
-              <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
-                <View style={styles.modalField}>
-                  <Text style={styles.modalLabel}>Name</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="Enter contact name"
-                    placeholderTextColor={Colors.textLight}
-                    value={contactName}
-                    onChangeText={setContactName}
-                    autoFocus
-                  />
-                </View>
-
-                <View style={styles.modalField}>
-                  <Text style={styles.modalLabel}>Phone Number</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="Enter phone number"
-                    placeholderTextColor={Colors.textLight}
-                    value={contactPhone}
-                    onChangeText={setContactPhone}
-                    keyboardType="phone-pad"
-                  />
-                </View>
-
-                <View style={styles.modalField}>
-                  <Text style={styles.modalLabel}>Phone Label (Optional)</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="e.g., Mobile, Home, Work"
-                    placeholderTextColor={Colors.textLight}
-                    value={contactPhoneLabel}
-                    onChangeText={setContactPhoneLabel}
-                  />
-                </View>
-              </ScrollView>
-
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonCancel]}
-                  onPress={handleCancelAddContact}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.modalButtonTextCancel}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonCreate]}
-                  onPress={handleAddContact}
-                  disabled={addingContact || !contactName.trim() || !contactPhone.trim()}
-                  activeOpacity={0.8}
-                >
-                  {addingContact ? (
-                    <ActivityIndicator color={Colors.surface} />
-                  ) : (
-                    <Text style={styles.modalButtonTextCreate}>Add</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search contacts..."
+          placeholderTextColor={Colors.textLight}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+      </View>
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={styles.loadingText}>Loading contacts...</Text>
         </View>
-      ) : userContacts && userContacts.length > 0 ? (
+      ) : filteredContacts.length > 0 ? (
         <FlatList
-          data={userContacts}
+          data={filteredContacts}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           refreshControl={
@@ -333,7 +207,10 @@ export default function ContactsScreen() {
             />
           }
           renderItem={({ item }) => (
-            <View style={styles.contactCard}>
+            <TouchableOpacity
+              style={styles.contactCard}
+              activeOpacity={0.7}
+            >
               <View style={styles.contactInfo}>
                 <Text style={styles.contactName}>{item.name}</Text>
                 <Text style={styles.contactPhone}>
@@ -341,18 +218,20 @@ export default function ContactsScreen() {
                   {item.phone_label && ` • ${item.phone_label}`}
                 </Text>
               </View>
-            </View>
+            </TouchableOpacity>
           )}
           showsVerticalScrollIndicator={false}
         />
       ) : (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>No contacts imported</Text>
+          <Text style={styles.emptyText}>No contacts found</Text>
           <Text style={styles.emptySubtext}>
             {!session?.user?.id 
               ? 'Please sign in to import contacts'
               : Platform.OS === 'web' 
               ? 'Contact import is not available on web'
+              : searchQuery 
+              ? 'No contacts match your search'
               : 'Tap "Import Contact Lists" to import your device contacts'}
           </Text>
         </View>
@@ -384,11 +263,28 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   actionBar: {
-    padding: 16,
-    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: Colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
   },
-  addButton: {
-    marginTop: 0,
+  searchContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: Colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  searchInput: {
+    backgroundColor: Colors.background,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: Colors.text,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   loadingContainer: {
     flex: 1,
@@ -449,9 +345,18 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: Colors.surface,
     borderRadius: 16,
-    width: '90%',
-    maxHeight: '80%',
+    width: Platform.OS === 'web' ? 600 : '90%',
+    maxWidth: Platform.OS === 'web' ? '90%' : undefined,
+    maxHeight: '85%',
     padding: 24,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   modalTitle: {
     fontSize: 24,
@@ -460,7 +365,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   modalScrollView: {
-    maxHeight: 400,
+    maxHeight: Platform.OS === 'web' ? 450 : 400,
   },
   modalField: {
     marginBottom: 20,
