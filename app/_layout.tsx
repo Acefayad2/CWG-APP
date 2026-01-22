@@ -1,13 +1,16 @@
 import { Stack } from 'expo-router'
 import { QueryProvider } from '@/lib/react-query'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 // Temporarily disabled CSS import for web compatibility
 // import '../global.css'
 
 export default function RootLayout() {
   return (
-    <QueryProvider>
-      <AuthLayout />
-    </QueryProvider>
+    <ErrorBoundary>
+      <QueryProvider>
+        <AuthLayout />
+      </QueryProvider>
+    </ErrorBoundary>
   )
 }
 

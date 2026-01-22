@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSession } from '@/lib/queries/auth'
@@ -6,10 +7,17 @@ import { useScript, useDeleteScript, useToggleScriptFavorite } from '@/lib/queri
 export default function ScriptDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
-  const { data: session } = useSession()
+  const { data: session, isLoading: sessionLoading } = useSession()
   const { data: script, isLoading } = useScript(id, session?.user?.id)
   const deleteScript = useDeleteScript()
   const toggleFavorite = useToggleScriptFavorite()
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!sessionLoading && !session?.user?.id) {
+      router.replace('/(auth)/login')
+    }
+  }, [session, sessionLoading, router])
 
   const handleDelete = () => {
     Alert.alert(
@@ -48,6 +56,24 @@ export default function ScriptDetailScreen() {
 
   const handleSend = () => {
     router.push(`/contacts?scriptId=${id}`)
+  }
+
+  // Show loading while checking authentication
+  if (sessionLoading) {
+    return (
+      <View className="flex-1 justify-center items-center bg-white">
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    )
+  }
+
+  // Redirect if not authenticated (handled by useEffect, but show loading during redirect)
+  if (!session?.user?.id) {
+    return (
+      <View className="flex-1 justify-center items-center bg-white">
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    )
   }
 
   if (isLoading) {

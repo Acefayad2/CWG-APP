@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Modal, Platform, StyleSheet } from 'react-native'
 import { useRouter } from 'expo-router'
 import * as ImagePicker from 'expo-image-picker'
@@ -8,8 +8,15 @@ import { useCreateResource } from '@/lib/queries/resources'
 
 export default function AdminResourcesScreen() {
   const router = useRouter()
-  const { data: session } = useSession()
+  const { data: session, isLoading: sessionLoading } = useSession()
   const createResource = useCreateResource()
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!sessionLoading && !session?.user?.id) {
+      router.replace('/(auth)/login')
+    }
+  }, [session, sessionLoading, router])
   const [uploading, setUploading] = useState(false)
   const [showTitleModal, setShowTitleModal] = useState(false)
   const [titleInput, setTitleInput] = useState('')
@@ -99,6 +106,28 @@ export default function AdminResourcesScreen() {
     } finally {
       setUploading(false)
     }
+  }
+
+  // Show loading while checking authentication
+  if (sessionLoading) {
+    return (
+      <ScrollView className="flex-1 bg-gray-50">
+        <View className="flex-1 justify-center items-center" style={{ minHeight: 400 }}>
+          <ActivityIndicator size="large" color="#2563eb" />
+        </View>
+      </ScrollView>
+    )
+  }
+
+  // Redirect if not authenticated (handled by useEffect, but show loading during redirect)
+  if (!session?.user?.id) {
+    return (
+      <ScrollView className="flex-1 bg-gray-50">
+        <View className="flex-1 justify-center items-center" style={{ minHeight: 400 }}>
+          <ActivityIndicator size="large" color="#2563eb" />
+        </View>
+      </ScrollView>
+    )
   }
 
   return (

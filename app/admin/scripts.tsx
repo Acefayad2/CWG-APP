@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { View, Text, TouchableOpacity, FlatList, ActivityIndicator, RefreshControl, Alert, StyleSheet } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSession } from '@/lib/queries/auth'
@@ -9,9 +9,16 @@ import { ScriptWithFavorite } from '@/types'
 
 export default function AdminScriptsScreen() {
   const router = useRouter()
-  const { data: session } = useSession()
+  const { data: session, isLoading: sessionLoading } = useSession()
   const { data: scripts, isLoading, refetch, isRefetching } = useScripts(session?.user?.id)
   const deleteScript = useDeleteScript()
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!sessionLoading && !session?.user?.id) {
+      router.replace('/(auth)/login')
+    }
+  }, [session, sessionLoading, router])
 
   const adminScripts = scripts?.filter(s => s.created_by === session?.user?.id) || []
 
@@ -34,6 +41,24 @@ export default function AdminScriptsScreen() {
           },
         },
       ]
+    )
+  }
+
+  // Show loading while checking authentication
+  if (sessionLoading) {
+    return (
+      <View style={[CommonStyles.centered, { backgroundColor: Colors.background }]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    )
+  }
+
+  // Redirect if not authenticated (handled by useEffect, but show loading during redirect)
+  if (!session?.user?.id) {
+    return (
+      <View style={[CommonStyles.centered, { backgroundColor: Colors.background }]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
     )
   }
 

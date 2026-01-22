@@ -133,6 +133,24 @@ export default function AdminApprovalsScreen() {
   const isRefetching = activeTab === 'pending' ? isRefetchingPending : isRefetchingAll
   const refetch = activeTab === 'pending' ? refetchPending : refetchAll
 
+  // Show loading while checking authentication
+  if (sessionLoading) {
+    return (
+      <View style={[CommonStyles.centered, { backgroundColor: Colors.background }]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    )
+  }
+
+  // Redirect if not authenticated (handled by useEffect, but show loading during redirect)
+  if (!session?.user?.id) {
+    return (
+      <View style={[CommonStyles.centered, { backgroundColor: Colors.background }]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    )
+  }
+
   if (isLoading) {
     return (
       <View style={[CommonStyles.centered, { backgroundColor: Colors.background }]}>

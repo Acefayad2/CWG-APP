@@ -18,10 +18,14 @@ export default function LoginScreen() {
   const queryClient = useQueryClient()
   const { data: session } = useSession()
 
-  // Redirect if already logged in
+  // Redirect if already logged in (only check once, not on every render)
   useEffect(() => {
+    let isMounted = true
+    
     const checkSession = async () => {
       const { data: { session: currentSession } } = await supabase.auth.getSession()
+      if (!isMounted) return
+      
       if (currentSession?.user?.id) {
         // Check approval status before redirecting
         const { data: profile } = await supabase
@@ -29,6 +33,8 @@ export default function LoginScreen() {
           .select('approval_status')
           .eq('id', currentSession.user.id)
           .single()
+        
+        if (!isMounted) return
         
         if (profile?.approval_status === 'pending') {
           router.replace('/awaiting-approval')
@@ -41,7 +47,16 @@ export default function LoginScreen() {
         }
       }
     }
-    checkSession()
+    
+    // Small delay to prevent race condition with index.tsx redirect
+    const timeoutId = setTimeout(() => {
+      checkSession()
+    }, 100)
+    
+    return () => {
+      isMounted = false
+      clearTimeout(timeoutId)
+    }
   }, [router, queryClient])
 
   // Prevent back button on login page (after logout)
@@ -99,6 +114,7 @@ export default function LoginScreen() {
         .select('approval_status, role')
         .eq('id', authData.user.id)
         .single()
+      
       
       if (profileError) {
         console.error('Profile fetch error:', profileError)

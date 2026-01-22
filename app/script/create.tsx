@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSession } from '@/lib/queries/auth'
@@ -7,12 +7,19 @@ import { scriptSchema, ScriptInput } from '@/utils/validation'
 
 export default function CreateScriptScreen() {
   const router = useRouter()
-  const { data: session } = useSession()
+  const { data: session, isLoading: sessionLoading } = useSession()
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [category, setCategory] = useState('')
   const [errors, setErrors] = useState<Partial<ScriptInput>>({})
   const createScript = useCreateScript()
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!sessionLoading && !session?.user?.id) {
+      router.replace('/(auth)/login')
+    }
+  }, [session, sessionLoading, router])
 
   const handleCreate = async () => {
     try {
@@ -37,6 +44,24 @@ export default function CreateScriptScreen() {
         Alert.alert('Error', error.message || 'Failed to create script')
       }
     }
+  }
+
+  // Show loading while checking authentication
+  if (sessionLoading) {
+    return (
+      <View className="flex-1 justify-center items-center bg-white">
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    )
+  }
+
+  // Redirect if not authenticated (handled by useEffect, but show loading during redirect)
+  if (!session?.user?.id) {
+    return (
+      <View className="flex-1 justify-center items-center bg-white">
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    )
   }
 
   return (

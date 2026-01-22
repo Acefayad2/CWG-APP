@@ -9,7 +9,7 @@ import { Colors } from '@/constants/Colors'
 export default function EditScriptScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
-  const { data: session } = useSession()
+  const { data: session, isLoading: sessionLoading } = useSession()
   const { data: profile } = useProfile(session?.user?.id)
   const { data: script, isLoading } = useScript(id, session?.user?.id)
   const updateScript = useUpdateScript()
@@ -21,6 +21,13 @@ export default function EditScriptScreen() {
   
   const isAdmin = profile?.role === 'admin'
   const canEditAdmin = isAdmin && script?.is_admin
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!sessionLoading && !session?.user?.id) {
+      router.replace('/(auth)/login')
+    }
+  }, [session, sessionLoading, router])
 
   useEffect(() => {
     if (script) {
@@ -62,6 +69,24 @@ export default function EditScriptScreen() {
         Alert.alert('Error', error.message || 'Failed to update script')
       }
     }
+  }
+
+  // Show loading while checking authentication
+  if (sessionLoading) {
+    return (
+      <View className="flex-1 justify-center items-center bg-white">
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    )
+  }
+
+  // Redirect if not authenticated (handled by useEffect, but show loading during redirect)
+  if (!session?.user?.id) {
+    return (
+      <View className="flex-1 justify-center items-center bg-white">
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    )
   }
 
   if (isLoading) {

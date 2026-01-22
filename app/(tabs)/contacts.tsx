@@ -88,29 +88,185 @@ export default function ContactsScreen() {
   }, [session?.user?.id, syncContactsSilently])
 
   const handleImportContacts = async () => {
-    console.log('Import contacts button clicked')
-    
     if (!session?.user?.id) {
-      console.log('No session found')
       Alert.alert('Authentication Required', 'Please sign in to import contacts')
       return
     }
 
+    // Check if we're on web (including mobile web browsers)
     if (Platform.OS === 'web') {
-      Alert.alert('Web Platform', 'Contact import is not available on web. Please use the mobile app.')
-      return
+      // Check if Contact Picker API is available (Chrome/Edge on Android, Safari on iOS 14.5+)
+      // @ts-ignore - Contact Picker API types not available
+      const hasContactPicker = typeof navigator !== 'undefined' && 
+                                'contacts' in navigator && 
+                                typeof (navigator as any).contacts?.select === 'function'
+      
+      console.log('Contact Picker API available:', hasContactPicker)
+      
+      if (hasContactPicker) {
+        try {
+          setImporting(true)
+          console.log('Using Web Contact Picker API...')
+          
+          // Request contacts using Contact Picker API
+          // @ts-ignore - Contact Picker API
+          const contacts = await (navigator as any).contacts.select(['name', 'tel'], { multiple: true })
+          
+          if (!contacts || contacts.length === 0) {
+            Alert.alert('No Contacts', 'No contacts were selected')
+            setImporting(false)
+            return
+          }
+
+          console.log('Contacts selected:', contacts)
+
+          // Format contacts for import
+          const contactsToImport: Array<{ user_id: string; name: string; phone_number: string; phone_label: string }> = []
+          
+          for (const contact of contacts) {
+            const name = contact.name?.[0] || 'Unknown'
+            const phones = contact.tel || []
+            
+            for (const phone of phones) {
+              if (phone && phone.trim().length > 0) {
+                contactsToImport.push({
+                  user_id: session.user.id,
+                  name: name,
+                  phone_number: phone.trim(),
+                  phone_label: '',
+                })
+              }
+            }
+          }
+
+          if (contactsToImport.length === 0) {
+            Alert.alert('No Contacts', 'No contacts with phone numbers were selected')
+            setImporting(false)
+            return
+          }
+
+          // Check for duplicates
+          const existingContacts = userContacts || []
+          const existingPhoneNumbers = new Set(
+            existingContacts.map(c => `${c.phone_number}`.trim().toLowerCase())
+          )
+
+          const newContacts = contactsToImport.filter(
+            contact => !existingPhoneNumbers.has(contact.phone_number.trim().toLowerCase())
+          )
+
+          if (newContacts.length === 0) {
+            Alert.alert('Import Complete', 'All selected contacts are already in your list.')
+            setImporting(false)
+            return
+          }
+
+          // Import contacts in batches
+          const BATCH_SIZE = 100
+          let importedCount = 0
+
+          for (let i = 0; i < newContacts.length; i += BATCH_SIZE) {
+            const batch = newContacts.slice(i, i + BATCH_SIZE)
+            try {
+              await importContacts.mutateAsync({
+                userId: session.user.id,
+                contacts: batch,
+              })
+              importedCount += batch.length
+            } catch (error: any) {
+              if (error.code !== '23505') {
+                throw error
+              }
+            }
+          }
+
+          Alert.alert('Success', `Imported ${importedCount} contacts`)
+          refetch()
+          setImporting(false)
+          return
+        } catch (error: any) {
+          console.error('Web Contact Picker error:', error)
+          Alert.alert(
+            'Import Failed',
+            error.message || 'Failed to import contacts. Please try again or use the mobile app.',
+            [{ text: 'OK' }]
+          )
+          setImporting(false)
+          return
+        }
+      } else {
+        // Contact Picker API not available - show helpful message
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(typeof navigator !== 'undefined' ? navigator.userAgent : '')
+        
+        // Reset importing state first
+        setImporting(false)
+        
+        // Show alert immediately (no setTimeout needed)
+        if (isMobile) {
+          Alert.alert(
+            'Contact Import Not Available',
+            'Your mobile browser does not support automatic contact import.\n\nTo import contacts:\n\n1. Download the native mobile app (iOS/Android)\n2. Or use Chrome/Edge on Android\n3. Or use Safari on iOS 14.5+\n\nAlternatively, you can add contacts manually.',
+            [{ text: 'OK' }]
+          )
+        } else {
+          Alert.alert(
+            'Contact Import Not Available',
+            'Automatic contact import is not available on desktop browsers.\n\nTo import contacts:\n\n1. Use the mobile app (iOS/Android)\n2. Or add contacts manually using the "Add Contact" button',
+            [{ text: 'OK' }]
+          )
+        }
+        return
+      }
     }
 
     try {
       setImporting(true)
-      console.log('Starting contact import process...')
       
-      // Request permission - this will prompt the device to ask user
-      console.log('Requesting contacts permission...')
-      const { status } = await Contacts.requestPermissionsAsync()
-      console.log('Permission status:', status)
+      // Double-check we're not on web (expo-contacts doesn't work on web)
+      if (Platform.OS === 'web') {
+        Alert.alert(
+          'Not Available on Web',
+          'Contact import is not available on web browsers. Please use the mobile app (iOS/Android) to import contacts.',
+          [{ text: 'OK' }]
+        )
+        setImporting(false)
+        return
+      }
+      
+      // Verify expo-contacts is available
+      if (!Contacts || typeof Contacts.getPermissionsAsync !== 'function') {
+        throw new Error('Contacts API is not available on this platform')
+      }
+      
+      // First check current permission status
+      console.log('Checking current permission status...')
+      let currentStatus: string
+      try {
+        const permissionCheck = await Contacts.getPermissionsAsync()
+        currentStatus = permissionCheck.status
+      } catch (permError: any) {
+        console.error('Error checking permissions:', permError)
+        throw new Error(`Failed to check contacts permission: ${permError.message || 'Unknown error'}`)
+      }
+      console.log('Current permission status:', currentStatus)
+      
+      let status = currentStatus
+      
+      // If not granted, request permission - this will prompt the device to ask user
+      if (status !== 'granted') {
+        console.log('Permission not granted, requesting...')
+        try {
+          const permissionResult = await Contacts.requestPermissionsAsync()
+          status = permissionResult.status
+          console.log('Permission request result:', status)
+        } catch (requestError: any) {
+          console.error('Error requesting permissions:', requestError)
+          throw new Error(`Failed to request contacts permission: ${requestError.message || 'Unknown error'}`)
+        }
+      }
       
       if (status !== 'granted') {
+        console.log('Permission denied by user')
         Alert.alert(
           'Permission Denied', 
           'Contacts permission is required to import your contact list. Please enable it in your device settings.',
@@ -119,9 +275,22 @@ export default function ContactsScreen() {
             { 
               text: 'Open Settings', 
               onPress: () => {
-                // On iOS/Android, this would typically open app settings
-                // For now, just show a message
-                Alert.alert('Settings', 'Please go to your device Settings > App Permissions > Contacts and enable access.')
+                // Try to open app settings if possible
+                if (Platform.OS === 'ios') {
+                  // On iOS, we can't programmatically open settings, but we can guide the user
+                  Alert.alert(
+                    'Enable Contacts Access',
+                    'Please go to:\nSettings > CWG APP > Contacts\n\nThen enable "Allow Access to Contacts"'
+                  )
+                } else if (Platform.OS === 'android') {
+                  // On Android, we can try to open settings
+                  Alert.alert(
+                    'Enable Contacts Access',
+                    'Please go to:\nSettings > Apps > CWG APP > Permissions > Contacts\n\nThen enable access'
+                  )
+                } else {
+                  Alert.alert('Settings', 'Please go to your device Settings > App Permissions > Contacts and enable access.')
+                }
               }
             }
           ]
@@ -129,17 +298,29 @@ export default function ContactsScreen() {
         setImporting(false)
         return
       }
+      
+      console.log('Permission granted, proceeding with contact import...')
 
       // Get contacts from device
       console.log('Fetching contacts from device...')
-      const { data, error: contactsError } = await Contacts.getContactsAsync({
-        fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
-      })
+      let data
+      let contactsError
+      try {
+        const contactsResult = await Contacts.getContactsAsync({
+          fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
+        })
+        data = contactsResult.data
+        contactsError = contactsResult.error
+      } catch (fetchError: any) {
+        console.error('Exception fetching contacts:', fetchError)
+        throw new Error(`Failed to fetch contacts: ${fetchError.message || 'Unknown error'}`)
+      }
 
       if (contactsError) {
         console.error('Error fetching contacts:', contactsError)
         throw new Error(`Failed to fetch contacts: ${contactsError.message || 'Unknown error'}`)
       }
+      
 
       if (!data || data.length === 0) {
         console.log('No contacts found on device')
@@ -282,7 +463,6 @@ export default function ContactsScreen() {
           ]}
           onPress={(e) => {
             e.stopPropagation()
-            console.log('Import button pressed')
             handleImportContacts()
           }}
           disabled={importing || !session?.user?.id}
