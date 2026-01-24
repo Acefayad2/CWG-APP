@@ -96,21 +96,67 @@ export default function ContactsScreen() {
     // Check if we're on web (including mobile web browsers)
     if (Platform.OS === 'web') {
       // Check if Contact Picker API is available (Chrome/Edge on Android, Safari on iOS 14.5+)
-      // @ts-ignore - Contact Picker API types not available
-      const hasContactPicker = typeof navigator !== 'undefined' && 
-                                'contacts' in navigator && 
-                                typeof (navigator as any).contacts?.select === 'function'
+      // The Contact Picker API must be called directly from a user gesture
+      const nav = typeof navigator !== 'undefined' ? navigator : null
+      const hasContactPicker = nav && 
+                                'contacts' in nav && 
+                                typeof (nav as any).contacts?.select === 'function'
       
-      console.log('Contact Picker API available:', hasContactPicker)
+      console.log('Contact Picker API check:', {
+        hasNavigator: !!nav,
+        hasContacts: nav && 'contacts' in nav,
+        contactsValue: nav ? (nav as any).contacts : 'N/A',
+        hasSelect: nav && typeof (nav as any).contacts?.select === 'function',
+        userAgent: nav?.userAgent || 'N/A'
+      })
       
-      if (hasContactPicker) {
-        try {
-          setImporting(true)
-          console.log('Using Web Contact Picker API...')
-          
-          // Request contacts using Contact Picker API
-          // @ts-ignore - Contact Picker API
-          const contacts = await (navigator as any).contacts.select(['name', 'tel'], { multiple: true })
+      if (!hasContactPicker) {
+        const userAgent = nav?.userAgent || ''
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(userAgent)
+        const isChrome = /Chrome/i.test(userAgent) && !/Edge/i.test(userAgent)
+        const isSafari = /Safari/i.test(userAgent) && !/Chrome/i.test(userAgent)
+        const isEdge = /Edge/i.test(userAgent)
+        
+        if (isMobile && (isChrome || isEdge || isSafari)) {
+          Alert.alert(
+            'Contact Import Available',
+            'Your browser should support contact import!\n\nHowever, the Contact Picker API may not be enabled. Please ensure:\n\n1. You are using Chrome/Edge on Android or Safari on iOS 14.5+\n2. The website is served over HTTPS\n3. You grant permission when prompted\n\nIf it still doesn\'t work, try using the native mobile app.',
+            [{ text: 'OK' }]
+          )
+        } else if (isMobile) {
+          Alert.alert(
+            'Contact Import Not Available',
+            'Your mobile browser does not support automatic contact import.\n\nTo import contacts:\n\n1. Download the native mobile app (iOS/Android)\n2. Or use Chrome/Edge on Android\n3. Or use Safari on iOS 14.5+\n\nAlternatively, you can add contacts manually.',
+            [{ text: 'OK' }]
+          )
+        } else {
+          Alert.alert(
+            'Contact Import Not Available',
+            'Automatic contact import is not available on desktop browsers.\n\nTo import contacts:\n\n1. Use the mobile app (iOS/Android)\n2. Or use Chrome/Edge on Android mobile\n3. Or add contacts manually using the "Add Contact" button',
+            [{ text: 'OK' }]
+          )
+        }
+        return
+      }
+      
+      // IMPORTANT: Call the Contact Picker API immediately from user gesture
+      // Do NOT set state or do anything async before calling the API
+      // The API must be called synchronously from the user interaction
+      try {
+        console.log('Calling Web Contact Picker API...')
+        
+        // Request contacts using Contact Picker API
+        // This must be called directly from user interaction (button click)
+        // The API will show a native contact picker dialog
+        // Call it immediately without any state updates first
+        // @ts-ignore - Contact Picker API types not available
+        const contacts = await (nav as any).contacts.select(
+          ['name', 'tel'], 
+          { multiple: true }
+        )
+        
+        // Set importing state after the picker is shown
+        setImporting(true)
           
           if (!contacts || contacts.length === 0) {
             Alert.alert('No Contacts', 'No contacts were selected')
@@ -180,38 +226,91 @@ export default function ContactsScreen() {
             }
           }
 
-          Alert.alert('Success', `Imported ${importedCount} contacts`)
-          refetch()
-          setImporting(false)
-          return
-        } catch (error: any) {
-          console.error('Web Contact Picker error:', error)
-          Alert.alert(
-            'Import Failed',
-            error.message || 'Failed to import contacts. Please try again or use the mobile app.',
-            [{ text: 'OK' }]
-          )
-          setImporting(false)
+        Alert.alert('Success', `Imported ${importedCount} contacts`)
+        refetch()
+        setImporting(false)
+        return
+      } catch (error: any) {
+        console.error('Web Contact Picker error:', error)
+        setImporting(false)
+        
+        // Check if user cancelled the picker
+        if (error.name === 'AbortError' || 
+            error.message?.toLowerCase().includes('cancel') || 
+            error.message?.toLowerCase().includes('abort') ||
+            error.code === 20) { // DOMException.ABORT_ERR
+          Alert.alert('Import Cancelled', 'Contact selection was cancelled.')
           return
         }
+        
+        // Check if it's a permission/security error
+        if (error.name === 'SecurityError' || 
+            error.message?.toLowerCase().includes('permission') ||
+            error.message?.toLowerCase().includes('secure context')) {
+          Alert.alert(
+            'Permission Required',
+            'Contact access requires a secure connection (HTTPS) and user permission.\n\nPlease ensure:\n\n1. The website is using HTTPS\n2. You grant permission when prompted\n3. You are using a supported browser (Chrome/Edge on Android or Safari on iOS 14.5+)',
+            [{ text: 'OK' }]
+          )
+          return
+        }
+        
+        // Generic error - show helpful message
+        const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(userAgent)
+        const isChrome = /Chrome/i.test(userAgent) && !/Edge/i.test(userAgent)
+        const isSafari = /Safari/i.test(userAgent) && !/Chrome/i.test(userAgent)
+        const isEdge = /Edge/i.test(userAgent)
+        
+        let errorMessage = 'Failed to import contacts.'
+        
+        if (isMobile && (isChrome || isEdge || isSafari)) {
+          errorMessage += '\n\nThe Contact Picker API should be available in your browser.\n\nPlease try:\n1. Refreshing the page\n2. Ensuring the site uses HTTPS\n3. Granting permission when prompted\n\nIf it still doesn\'t work, use the native mobile app.'
+        } else if (isMobile) {
+          errorMessage += '\n\nYour browser may not support the Contact Picker API.\n\nSupported browsers:\n• Chrome/Edge on Android\n• Safari on iOS 14.5+\n\nPlease use one of these browsers or the native mobile app.'
+        } else {
+          errorMessage += '\n\nAutomatic contact import is not available on desktop browsers.\n\nPlease use:\n• The mobile app (iOS/Android)\n• Chrome/Edge on Android mobile\n• Or add contacts manually'
+        }
+        
+        Alert.alert('Import Failed', errorMessage, [{ text: 'OK' }])
+        return
+      }
       } else {
         // Contact Picker API not available - show helpful message
-        const isMobile = /iPhone|iPad|iPod|Android/i.test(typeof navigator !== 'undefined' ? navigator.userAgent : '')
+        const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(userAgent)
+        const isChrome = /Chrome/i.test(userAgent) && !/Edge/i.test(userAgent)
+        const isSafari = /Safari/i.test(userAgent) && !/Chrome/i.test(userAgent)
+        const isEdge = /Edge/i.test(userAgent)
         
         // Reset importing state first
         setImporting(false)
         
-        // Show alert immediately (no setTimeout needed)
+        // Show alert with browser-specific guidance
         if (isMobile) {
-          Alert.alert(
-            'Contact Import Not Available',
-            'Your mobile browser does not support automatic contact import.\n\nTo import contacts:\n\n1. Download the native mobile app (iOS/Android)\n2. Or use Chrome/Edge on Android\n3. Or use Safari on iOS 14.5+\n\nAlternatively, you can add contacts manually.',
-            [{ text: 'OK' }]
-          )
+          if (isChrome || isEdge) {
+            Alert.alert(
+              'Contact Import Available',
+              'Your browser supports contact import!\n\nHowever, the Contact Picker API may not be enabled. Please ensure:\n\n1. You are using Chrome/Edge on Android\n2. The website is served over HTTPS\n3. You grant permission when prompted\n\nIf it still doesn\'t work, try using the native mobile app.',
+              [{ text: 'OK' }]
+            )
+          } else if (isSafari) {
+            Alert.alert(
+              'Contact Import Available',
+              'Safari on iOS 14.5+ supports contact import!\n\nPlease ensure:\n\n1. You are using iOS 14.5 or later\n2. The website is served over HTTPS\n3. You grant permission when prompted\n\nIf it still doesn\'t work, try using the native mobile app.',
+              [{ text: 'OK' }]
+            )
+          } else {
+            Alert.alert(
+              'Contact Import Not Available',
+              'Your mobile browser does not support automatic contact import.\n\nTo import contacts:\n\n1. Download the native mobile app (iOS/Android)\n2. Or use Chrome/Edge on Android\n3. Or use Safari on iOS 14.5+\n\nAlternatively, you can add contacts manually.',
+              [{ text: 'OK' }]
+            )
+          }
         } else {
           Alert.alert(
             'Contact Import Not Available',
-            'Automatic contact import is not available on desktop browsers.\n\nTo import contacts:\n\n1. Use the mobile app (iOS/Android)\n2. Or add contacts manually using the "Add Contact" button',
+            'Automatic contact import is not available on desktop browsers.\n\nTo import contacts:\n\n1. Use the mobile app (iOS/Android)\n2. Or use Chrome/Edge on Android mobile\n3. Or add contacts manually using the "Add Contact" button',
             [{ text: 'OK' }]
           )
         }
@@ -528,11 +627,11 @@ export default function ContactsScreen() {
           <Text style={styles.emptySubtext}>
             {!session?.user?.id 
               ? 'Please sign in to import contacts'
-              : Platform.OS === 'web' 
-              ? 'Contact import is not available on web'
               : searchQuery 
               ? 'No contacts match your search'
-              : 'Tap "Import Contact Lists" to import your device contacts'}
+              : Platform.OS === 'web'
+              ? 'Tap "Import Contact List" to select contacts from your device (supported on Chrome/Edge Android and Safari iOS 14.5+)'
+              : 'Tap "Import Contact List" to import your device contacts'}
           </Text>
         </View>
       )}
