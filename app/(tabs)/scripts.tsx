@@ -32,8 +32,8 @@ export default function ScriptsScreen() {
   const isAdmin = profile?.role === 'admin'
 
   const filteredScripts = scripts?.filter(script =>
-    script.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    script.body.toLowerCase().includes(searchQuery.toLowerCase())
+    script.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    script.body?.toLowerCase().includes(searchQuery.toLowerCase())
   ) || []
 
   const handleCreateScript = async () => {

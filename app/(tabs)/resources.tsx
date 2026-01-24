@@ -27,7 +27,7 @@ export default function ResourcesScreen() {
       </View>
 
       <FlatList
-          data={resources}
+          data={resources || []}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           refreshControl={

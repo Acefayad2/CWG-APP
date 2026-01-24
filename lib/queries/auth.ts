@@ -99,22 +99,19 @@ export function useSignIn() {
       if (error) throw error
       return data
     },
-    onSuccess: async (data) => {
+    onSuccess: (data) => {
       // Set session data immediately
       if (data.session) {
         queryClient.setQueryData(['session'], data.session)
       }
       
-      // Invalidate and refetch session to ensure it's fresh
-      await queryClient.invalidateQueries({ queryKey: ['session'] })
-      await queryClient.refetchQueries({ queryKey: ['session'] })
+      // Invalidate queries (non-blocking) - don't refetch as it can hang
+      // The login handler will fetch profile directly when needed
+      queryClient.invalidateQueries({ queryKey: ['session'] })
       
-      // If we have a user ID, refetch their profile immediately
       if (data.session?.user?.id) {
-        await queryClient.invalidateQueries({ queryKey: ['profile', data.session.user.id] })
-        await queryClient.refetchQueries({ queryKey: ['profile', data.session.user.id] })
+        queryClient.invalidateQueries({ queryKey: ['profile', data.session.user.id] })
       } else {
-        // Invalidate all profile queries
         queryClient.invalidateQueries({ queryKey: ['profile'] })
       }
     },

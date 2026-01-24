@@ -71,7 +71,7 @@ export default function ContactsScreen() {
   }
 
   const filteredContacts = contacts.filter(contact =>
-    contact.name.toLowerCase().includes(searchQuery.toLowerCase())
+    contact.name?.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   if (loading) {

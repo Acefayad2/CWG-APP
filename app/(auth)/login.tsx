@@ -89,6 +89,8 @@ export default function LoginScreen() {
       setErrors({})
       const validated = signInSchema.parse({ email, password })
       
+      console.log('Starting login process...')
+      
       // Sign in
       const authData = await signIn.mutateAsync(validated)
       
@@ -96,25 +98,28 @@ export default function LoginScreen() {
         throw new Error('Login failed: No session created')
       }
       
+      console.log('Sign in successful, user ID:', authData.user.id)
+      
       // Ensure session is set in cache immediately
       queryClient.setQueryData(['session'], authData.session)
       
-      // Wait a moment for session to be fully established
-      await new Promise(resolve => setTimeout(resolve, 300))
-      
-      // Verify session is still valid
-      const { data: { session: verifySession } } = await supabase.auth.getSession()
-      if (!verifySession) {
-        throw new Error('Session verification failed. Please try again.')
-      }
-      
       // Get profile data to check approval status
+      // IMPORTANT: We only check approval_status, NOT role. All users (admin or regular) 
+      // can log in if their approval_status is 'approved'
+      console.log('Fetching profile...')
+      
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('approval_status, role')
         .eq('id', authData.user.id)
         .single()
       
+      console.log('Profile fetch result:', { 
+        hasProfile: !!profile, 
+        approvalStatus: profile?.approval_status, 
+        role: profile?.role,
+        error: profileError 
+      })
       
       if (profileError) {
         console.error('Profile fetch error:', profileError)
@@ -157,19 +162,26 @@ export default function LoginScreen() {
       }
       
       // Check approval status and redirect accordingly
+      // NOTE: We do NOT check role here - all users (admin or regular) can log in if approved
       const approvalStatus = profile.approval_status
+      
+      console.log('Checking approval status:', approvalStatus, 'Role:', profile.role)
+      
+      // Invalidate profile cache (but don't wait for refetch - it can hang)
+      queryClient.invalidateQueries({ queryKey: ['profile', authData.user.id] })
       
       if (approvalStatus === 'pending') {
         // User is pending approval - redirect to awaiting approval screen
+        console.log('User is pending approval, redirecting to awaiting-approval')
         router.replace('/awaiting-approval')
       } else if (approvalStatus === 'approved') {
-        // User is approved - navigate to app
-        // Invalidate and refetch profile to ensure fresh data
-        await queryClient.invalidateQueries({ queryKey: ['profile', authData.user.id] })
-        await queryClient.refetchQueries({ queryKey: ['profile', authData.user.id] })
+        // User is approved - navigate to app (works for both admin and regular users)
+        console.log('User is approved, redirecting to scripts page. Role:', profile.role)
+        // Navigate immediately - don't wait for refetch
         router.replace('/(tabs)/scripts')
       } else if (approvalStatus === 'rejected') {
         // User was rejected - show message and sign out
+        console.log('User is rejected, showing error message')
         Alert.alert(
           'Account Rejected',
           'Your account has been rejected. Please contact an administrator if you believe this is an error.',
@@ -185,7 +197,8 @@ export default function LoginScreen() {
           ]
         )
       } else {
-        // Unknown status - default to approved
+        // Unknown status - default to approved (fallback for safety)
+        console.log('Unknown approval status, defaulting to approved. Status was:', approvalStatus)
         router.replace('/(tabs)/scripts')
       }
     } catch (error: any) {

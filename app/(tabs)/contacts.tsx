@@ -542,8 +542,8 @@ export default function ContactsScreen() {
   }
 
   const filteredContacts = (userContacts || []).filter(contact =>
-    contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    contact.phone_number.includes(searchQuery)
+    contact.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    contact.phone_number?.includes(searchQuery)
   )
 
   return (

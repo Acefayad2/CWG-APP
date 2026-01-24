@@ -54,21 +54,36 @@ export default function SignUpScreen() {
       let retries = 3
       
       while (retries > 0 && !profile) {
-        const result = await supabase
-          .from('profiles')
-          .select('approval_status, full_name')
-          .eq('id', authData.user.id)
-          .single()
-        
-        profile = result.data
-        profileError = result.error
-        
-        if (profile) {
+        try {
+          const result = await supabase
+            .from('profiles')
+            .select('approval_status, full_name')
+            .eq('id', authData.user.id)
+            .single()
+          
+          profile = result.data
+          profileError = result.error
+          
+          if (profile) {
+            break
+          }
+          
+          // Only retry if it's a "not found" error, not other errors
+          if (profileError && profileError.code !== 'PGRST116') {
+            // Not a "not found" error - don't retry
+            break
+          }
+          
+          // Wait before retrying (only if we have retries left)
+          if (retries > 1) {
+            await new Promise(resolve => setTimeout(resolve, 500))
+          }
+        } catch (err) {
+          console.error('Error fetching profile:', err)
+          profileError = err as any
           break
         }
         
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, 500))
         retries--
       }
       

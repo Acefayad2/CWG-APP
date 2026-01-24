@@ -8,7 +8,7 @@ import { CommonStyles } from '@/constants/Styles'
 
 export default function AdminApprovalsScreen() {
   const router = useRouter()
-  const { data: session } = useSession()
+  const { data: session, isLoading: sessionLoading } = useSession()
   const { data: pendingUsers, isLoading: pendingLoading, refetch: refetchPending, isRefetching: isRefetchingPending } = usePendingUsers()
   const { data: allUsers, isLoading: allLoading, refetch: refetchAll, isRefetching: isRefetchingAll } = useAllUsers()
   const approveUser = useApproveUser()
@@ -191,7 +191,7 @@ export default function AdminApprovalsScreen() {
       </View>
 
       <FlatList
-        data={currentUsers}
+        data={currentUsers || []}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         refreshControl={

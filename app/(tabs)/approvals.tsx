@@ -212,7 +212,7 @@ export default function ApprovalsScreen() {
       </View>
 
       <FlatList
-        data={currentUsers}
+        data={currentUsers || []}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         refreshControl={
