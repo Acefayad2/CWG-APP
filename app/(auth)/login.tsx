@@ -198,18 +198,33 @@ export default function LoginScreen() {
         })
         setErrors(fieldErrors)
       } else {
-        // Show user-friendly error messages
+        // Show user-friendly error messages with specific password/email feedback
         let errorMessage = 'Failed to sign in'
+        let errorTitle = 'Sign In Error'
         
-        if (error.message?.includes('Invalid login credentials')) {
-          errorMessage = 'Invalid email or password. Please try again.'
-        } else if (error.message?.includes('Email not confirmed')) {
+        // Check error code and message for more specific feedback
+        const errorCode = error.code || error.status
+        const errorMsg = error.message || ''
+        
+        if (errorCode === 'invalid_credentials' || 
+            errorMsg.includes('Invalid login credentials') ||
+            errorMsg.includes('Invalid email or password') ||
+            errorMsg.toLowerCase().includes('invalid credentials')) {
+          errorTitle = 'Invalid Credentials'
+          errorMessage = 'The email or password you entered is incorrect. Please check your credentials and try again.'
+        } else if (errorCode === 'email_not_confirmed' || 
+                   errorMsg.includes('Email not confirmed')) {
+          errorTitle = 'Email Not Confirmed'
           errorMessage = 'Please check your email and confirm your account before signing in.'
-        } else if (error.message) {
-          errorMessage = error.message
+        } else if (errorCode === 'too_many_requests' || 
+                   errorMsg.includes('too many requests')) {
+          errorTitle = 'Too Many Attempts'
+          errorMessage = 'Too many login attempts. Please wait a few minutes before trying again.'
+        } else if (errorMsg) {
+          errorMessage = errorMsg
         }
         
-        Alert.alert('Sign In Error', errorMessage)
+        Alert.alert(errorTitle, errorMessage)
       }
     }
   }
